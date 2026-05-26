@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"log/slog"
 	"os"
 
@@ -10,24 +10,24 @@ import (
 )
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	}))
+	
+	cfg, err  := config.Load()
 
-	slog.SetDefault(logger)
+	logger := slog.New(
+		slog.NewTextHandler(
+			os.Stdout,
+			nil,
+		),
+	)
 
-	cfg, err := config.Load()
+	server, err := api.NewServer(cfg, logger)
 
-	if err !=nil {
-		fmt.Fprintf(os.Stderr, "failed to load config: %v\n", err)
-		os.Exit(1)
+	if err != nil {
+		log.Fatalf("failed to create server: %v", err)
 	}
 
-	srv := api.NewServer(cfg, logger)
+	if err := server.Start(); err != nil {
 
-	slog.Info("starting server", "addr", cfg.Server.Addr())
-	if err := srv.Start(); err != nil {
-		slog.Error("server exited", "err", err)
-		os.Exit(1)
+		log.Fatalf("server failed: %v", err)
 	}
 }

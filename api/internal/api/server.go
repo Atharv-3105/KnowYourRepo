@@ -1,44 +1,80 @@
 package api
 
 import (
-	"encoding/json"
+	"context"
 	"log/slog"
 	"net/http"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/atharva-3105/KnowYourRepo/internal/config"
+	"github.com/atharva-3105/KnowYourRepo/internal/sidecar"
+	"github.com/atharva-3105/KnowYourRepo/internal/store"
 )
 
 type Server struct {
 	cfg *config.Config
 	logger *slog.Logger
-	mux    *http.ServeMux
+	router *gin.Engine
+	store  *store.Store
+	sidecar *sidecar.Client
 }
 
-func NewServer(cfg *config.Config, logger *slog.Logger) *Server {
+func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
+	ctx := context.Background()
+	//Initialize the SQLite Store
+	dbStore, err := store.NewStore(ctx, "knowyourrepo.db", logger)
+	if err != nil{
+		return nil, err 
+	}
+
+	//Initialize the SideCar
+	sidecarClient := sidecar.NewClient("http://localhost:8000")
+
+	//Initialize the GIN client
+	router := gin.Default()
+
 	s := &Server{
-		cfg: cfg, 
+		cfg:  cfg,
 		logger: logger,
-		mux:	http.NewServeMux(),
+		router: router,
+		store: dbStore,
+		sidecar: sidecarClient,
 	}
 
 	s.registerRoutes()
-	return s
+	return s, nil
 }
 
 
 func (s *Server) registerRoutes() {
-	s.mux.HandleFunc("GET /health", s.handleHealth)
+	
+	//Health Route
+	s.router.GET("/health", s.handleHealth)
+
+	//Repo ingestion route
+	repoHandler := NewRepoHandler(s.logger,s.store, s.sidecar)
+
+	s.router.POST("/repos", repoHandler.CreateRepo)
 }
 
 func (s *Server) Start() error {
-	return http.ListenAndServe(s.cfg.Server.Addr(), s.mux)
+
+	s.logger.Info("starting api server", "addr", s.cfg.Server.Addr())
+	
+	return s.router.Run(s.cfg.Server.Addr())
 }
 
 
-func (s *Server) handleHealth( w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":"ok", 
-		"service": "api",
-	})
+func (s *Server) handleHealth(c *gin.Context) {
+
+	c.JSON(
+		http.StatusOK,
+		gin.H{
+			"status": "ok",
+			"service": "api",
+		},
+	)
 }
+
+

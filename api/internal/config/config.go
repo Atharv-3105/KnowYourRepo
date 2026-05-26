@@ -16,10 +16,6 @@ type ServerConfig struct {
 	Port   string 
 }
 
-func (s ServerConfig) Addr() string {
-	return fmt.Sprintf("%s:%s", s.Host, s.Port)
-}
-
 type ExtractorConfig struct {
 	BaseURL  string 
 }
@@ -27,6 +23,11 @@ type ExtractorConfig struct {
 type DBConfig struct {
 	Path   string 
 }
+
+func (s ServerConfig) Addr() string {
+	return fmt.Sprintf("%s:%s", s.Host, s.Port)
+}
+
 
 func Load() (*Config, error) {
 	cfg := &Config{
