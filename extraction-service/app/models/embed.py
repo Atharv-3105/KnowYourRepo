@@ -1,9 +1,13 @@
 from pydantic import BaseModel
 
-class EmbedRequest(BaseModel):
+class EmbedBatchItem(BaseModel):
     id: str 
     text: str 
     metadata: dict = {}
     
-class EmbedResponse(BaseModel):
+class EmbedBatchRequest(BaseModel):
+    items:  list[EmbedBatchItem]
+    
+class EmbedBatchResponse(BaseModel):
     success: bool
+    count:  int

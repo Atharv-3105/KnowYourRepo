@@ -1,6 +1,7 @@
 from __future__ import annotations
 from typing import Any 
 import httpx
+import asyncio
 from app.providers.base import EmbedProvider
 
 #Define class for Embedding using Ollama 
@@ -51,12 +52,43 @@ class OllamaProvider(EmbedProvider):
         if not texts:
             return []
         
-        results = []
-        for text in texts:
-            embedding = await self.embed(text)
-            results.append(embedding)
+        BATCH_SIZE = 32
+        
+        all_embeddings: list[list[float]] = []
+        
+        async with httpx.AsyncClient(timeout = self.timeout) as client:
             
-        return results
+            for i in range(0, len(texts), BATCH_SIZE):
+                
+                batch = texts[i: i + BATCH_SIZE]
+                
+                
+                tasks = []
+            
+                for text in texts:
+                    
+                    tasks.append(
+                        client.post(f"{self.base_url}/api/embeddings",
+                                    json={"model": self.model,"prompt":text})
+                    )
+                
+                responses = await asyncio.gather(*tasks)
+            
+                for response in responses:
+                
+                    response.raise_for_status()
+                
+                    data = response.json()
+                
+                    embedding = data.get("embedding")
+                
+                    if embedding is None:
+                        raise RuntimeError("missing embedding in resopnse")
+                
+                    all_embeddings.append(embedding)
+                
+            
+            return all_embeddings
         
         
         
