@@ -56,6 +56,9 @@ func (s *Server) registerRoutes() {
 	repoHandler := NewRepoHandler(s.logger,s.store, s.sidecar)
 
 	s.router.POST("/repos", repoHandler.CreateRepo)
+
+	//Graph Extraction Route
+	s.router.GET("/graph", repoHandler.GetCallGraph)
 }
 
 func (s *Server) Start() error {

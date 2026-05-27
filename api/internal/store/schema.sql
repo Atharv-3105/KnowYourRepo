@@ -24,6 +24,14 @@ CREATE TABLE IF NOT EXISTS edges (
     FOREIGN KEY(to_symbol_id) REFERENCES symbols(id)
 );
 
+CREATE TABLE IF NOT EXISTS call_edges (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    caller_symbol  TEXT NOT NULL,
+    callee_symbol  TEXT NOT NULL,
+
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
 CREATE INDEX IF NOT EXISTS idx_symbols_file_id ON symbols(file_id);
 CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_symbol_id);

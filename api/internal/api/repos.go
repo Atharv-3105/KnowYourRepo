@@ -115,6 +115,21 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 			continue
 		}
 
+		if file.Language == "go" {
+
+			edges := graph.ExtractGoCallGraph(parseResult.Root, parseResult.Source)
+
+			for _, edge := range edges {
+
+				err := h.store.InsertCallEdge(ctx, store.CallEdge{CallerSymbol: edge.Caller, CalleeSymbol: edge.Callee})
+
+				if err != nil {
+
+					h.logger.Error("failed to store call edge", "caller", edge.Caller, "callee", edge.Callee, "error", err)
+				}
+			}
+		}
+
 		//Store Symbolss
 		for _, sym := range symbols{
 
