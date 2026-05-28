@@ -59,6 +59,9 @@ func (s *Server) registerRoutes() {
 
 	//Graph Extraction Route
 	s.router.GET("/graph", repoHandler.GetCallGraph)
+
+	//Call-Graph Context Route
+	s.router.GET("/graph/context/:symbol", repoHandler.ExpandSymbolContext)
 }
 
 func (s *Server) Start() error {

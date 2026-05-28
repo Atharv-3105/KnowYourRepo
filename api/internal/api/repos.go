@@ -5,12 +5,15 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+
 	// "os"
 	"path/filepath"
 	"time"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/graph"
 	"github.com/atharva-3105/KnowYourRepo/internal/ingestion"
+	"github.com/atharva-3105/KnowYourRepo/internal/representation"
+	"github.com/atharva-3105/KnowYourRepo/internal/retrieval"
 	"github.com/atharva-3105/KnowYourRepo/internal/sidecar"
 	"github.com/atharva-3105/KnowYourRepo/internal/store"
 	"github.com/gin-gonic/gin"
@@ -24,6 +27,7 @@ type RepoHandler struct {
 	extractor  	*graph.Extractor
 	cloner      *ingestion.Cloner
 	walker      *ingestion.Walker
+	graphRetriever   *retrieval.GraphRetriever
 }
 
 func NewRepoHandler(
@@ -40,6 +44,7 @@ func NewRepoHandler(
 		extractor: graph.NewExtractor(logger),
 		cloner:    ingestion.NewCloner(logger),
 		walker:    ingestion.NewWalker(logger),
+		graphRetriever:   retrieval.NewGraphRetriever(store),
 	}
 }
 
@@ -107,6 +112,9 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 			h.logger.Warn("parsing failed", "path", file.Path, "error", err)
 			continue
 		}
+		
+		//Convert file into IR file object
+		irFile := representation.NewFile(file.Path, file.Language)
 
 		//Extract the Symbols
 		symbols, err := h.extractor.ExtractSymbols(parseResult.Root, parseResult.Source, file.Language)
@@ -139,6 +147,12 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 
 				h.logger.Error("failed to store call edges", "caller", edge.Caller, "callee", edge.Callee, "error", err)
 			}
+
+			irFile.Calls = append(irFile.Calls, 
+			  			   representation.CallEdge{
+								Caller:    edge.Caller,
+								Callee:    edge.Callee,
+						   })
 		}
 
 		//Store Symbolss
@@ -158,6 +172,18 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 				h.logger.Error("failed to insert symbol", "error", err)
 				continue
 			}
+
+			//Append items in IR 
+			irFile.Symbols = append(irFile.Symbols, 
+							 representation.Symbol{
+								ID: 	fmt.Sprintf("%d", symbolID),
+								Name: 	sym.Name,
+								Kind:	sym.Type,
+								Language: file.Language,
+								FilePath: file.Path,
+								StartLine:  sym.StartLine,
+								EndLine:   sym.EndLine,
+							 })
 
 			embedItems = append(embedItems, 
 								sidecar.EmbedBatchItem{
