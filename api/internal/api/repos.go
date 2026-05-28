@@ -115,18 +115,29 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 			continue
 		}
 
-		if file.Language == "go" {
+		//Call Graph Extraction
+		var edges []graph.CallEdge
 
-			edges := graph.ExtractGoCallGraph(parseResult.Root, parseResult.Source)
+		switch file.Language {
 
-			for _, edge := range edges {
+		case "go":
+				edges = graph.ExtractGoCallGraph(parseResult.Root, parseResult.Source)
 
-				err := h.store.InsertCallEdge(ctx, store.CallEdge{CallerSymbol: edge.Caller, CalleeSymbol: edge.Callee})
+		case "python":
+				edges = graph.ExtractPythonCallGraph(parseResult.Root, parseResult.Source)
 
-				if err != nil {
+		case "javascript", "typescript":
+				edges = graph.ExtractJSCallGraph(parseResult.Root, parseResult.Source)
+		}
+		
 
-					h.logger.Error("failed to store call edge", "caller", edge.Caller, "callee", edge.Callee, "error", err)
-				}
+		for _, edge := range edges {
+
+			err := h.store.InsertCallEdge(ctx, store.CallEdge{CallerSymbol: edge.Caller, CalleeSymbol: edge.Callee})
+
+			if err != nil {
+
+				h.logger.Error("failed to store call edges", "caller", edge.Caller, "callee", edge.Callee, "error", err)
 			}
 		}
 
