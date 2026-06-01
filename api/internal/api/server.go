@@ -62,6 +62,9 @@ func (s *Server) registerRoutes() {
 
 	//Call-Graph Context Route
 	s.router.GET("/graph/context/:symbol", repoHandler.ExpandSymbolContext)
+
+	//Search EndPoint Route
+	s.router.POST("/search", repoHandler.Search)
 }
 
 func (s *Server) Start() error {

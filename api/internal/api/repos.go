@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/atharva-3105/KnowYourRepo/internal/chunk"
+	"github.com/atharva-3105/KnowYourRepo/internal/contextbuilder"
 	"github.com/atharva-3105/KnowYourRepo/internal/graph"
 	"github.com/atharva-3105/KnowYourRepo/internal/ingestion"
 	"github.com/atharva-3105/KnowYourRepo/internal/representation"
@@ -28,6 +30,8 @@ type RepoHandler struct {
 	cloner      *ingestion.Cloner
 	walker      *ingestion.Walker
 	graphRetriever   *retrieval.GraphRetriever
+	hybridRetriever  *retrieval.HybridRetriever
+	contextBuilder   *contextbuilder.Builder
 }
 
 func NewRepoHandler(
@@ -45,6 +49,8 @@ func NewRepoHandler(
 		cloner:    ingestion.NewCloner(logger),
 		walker:    ingestion.NewWalker(logger),
 		graphRetriever:   retrieval.NewGraphRetriever(store),
+		hybridRetriever:  retrieval.NewHybridRetriever(store, sidecar),
+		contextBuilder:   contextbuilder.NewBuilder(),
 	}
 }
 
@@ -81,6 +87,12 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 		return 
 	}
 
+	//Declare RepoIR as JSON
+	repoIR := representation.Repository{
+		Name:	filepath.Base(repoDir),
+	}
+
+
 	//Get the files of the Repository
 	files, err := h.walker.WalkRepo(ctx,repoDir)
 	if err != nil {
@@ -111,6 +123,17 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 		if err != nil{
 			h.logger.Warn("parsing failed", "path", file.Path, "error", err)
 			continue
+		}
+
+		chunks := chunk.ExtractFunctionChunks(parseResult.Root, parseResult.Source, file.Language, file.Path)
+
+		var finalChunks []chunk.Chunk
+
+		for _, ch := range chunks {
+
+			splitChunks := chunk.SplitChunk(ch)
+
+			finalChunks = append(finalChunks, splitChunks...)
 		}
 		
 		//Convert file into IR file object
@@ -185,17 +208,36 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 								EndLine:   sym.EndLine,
 							 })
 
-			embedItems = append(embedItems, 
-								sidecar.EmbedBatchItem{
-									ID:  fmt.Sprintf("%d", symbolID),
-									Text:  fmt.Sprintf("%s %s", sym.Type, sym.Name),
-									Metadata: map[string]interface{}{
-										"file_path": file.Path,
-										"language": file.Language,
-										"type": sym.Type,
-									},
-								})
+			// embedItems = append(embedItems, 
+			// 					sidecar.EmbedBatchItem{
+			// 						ID:  fmt.Sprintf("%d", symbolID),
+			// 						Text:  fmt.Sprintf("%s %s", sym.Type, sym.Name),
+			// 						Metadata: map[string]interface{}{
+			// 							"file_path": file.Path,
+			// 							"language": file.Language,
+			// 							"type": sym.Type,
+			// 						},
+			// 					})
 		}
+
+		for idx, ch := range finalChunks {
+
+			embedItems = append(embedItems, 
+			  			sidecar.EmbedBatchItem{
+							ID:   fmt.Sprintf("%s_part_%d", ch.ID, idx),
+							Text:  ch.Content,
+							Metadata: map[string]interface{} {
+								"file_path": ch.FilePath,
+								"language": ch.Language,
+								"symbol":   ch.SymbolName,
+								"start_line": ch.StartLine,
+								"end_line": ch.EndLine,
+								"chunk_size": len(ch.Content),
+							},
+						})
+		}
+
+		repoIR.Files = append(repoIR.Files, irFile)
 	}
 
 	h.logger.Info("sending batch embeddings", "count", len(embedItems))
@@ -213,6 +255,14 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 		return 
 	}
 
+	//Save IR File Representation
+	irPath := filepath.Join(repoDir, "repository_ir.json")
+
+	err = representation.SaveRepository(repoIR, irPath)
+
+	if err != nil {
+		h.logger.Error("failed to save repository IR", "error", err)
+	}
 
 	c.JSON(http.StatusOK, CreateRepoResponse{
 				Success: true,
