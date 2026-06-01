@@ -23,7 +23,7 @@ type File  struct {
 }
 
 type Repository  struct {
-	Name    string 
-	Files   []File 
+	Name    string 		`json:"name"`
+	Files   []File 		`json:"files"`
 }
 
