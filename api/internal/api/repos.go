@@ -14,6 +14,7 @@ import (
 	"github.com/atharva-3105/KnowYourRepo/internal/contextbuilder"
 	"github.com/atharva-3105/KnowYourRepo/internal/graph"
 	"github.com/atharva-3105/KnowYourRepo/internal/ingestion"
+	"github.com/atharva-3105/KnowYourRepo/internal/rag"
 	"github.com/atharva-3105/KnowYourRepo/internal/representation"
 	"github.com/atharva-3105/KnowYourRepo/internal/retrieval"
 	"github.com/atharva-3105/KnowYourRepo/internal/sidecar"
@@ -32,6 +33,7 @@ type RepoHandler struct {
 	graphRetriever   *retrieval.GraphRetriever
 	hybridRetriever  *retrieval.HybridRetriever
 	contextBuilder   *contextbuilder.Builder
+	ragService 		*rag.Service
 }
 
 func NewRepoHandler(
@@ -40,6 +42,7 @@ func NewRepoHandler(
 	sidecar  *sidecar.Client,
 ) *RepoHandler {
 
+	builder := contextbuilder.NewBuilder()
 	return &RepoHandler{
 		logger:  logger,
 		store:   store,
@@ -50,7 +53,8 @@ func NewRepoHandler(
 		walker:    ingestion.NewWalker(logger),
 		graphRetriever:   retrieval.NewGraphRetriever(store),
 		hybridRetriever:  retrieval.NewHybridRetriever(store, sidecar),
-		contextBuilder:   contextbuilder.NewBuilder(),
+		contextBuilder:   builder,
+		ragService: 	  rag.NewService(builder, sidecar),
 	}
 }
 
