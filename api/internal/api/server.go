@@ -65,6 +65,9 @@ func (s *Server) registerRoutes() {
 
 	//Search EndPoint Route
 	s.router.POST("/search", repoHandler.Search)
+
+	//Chat Route
+	s.router.POST("/chat", repoHandler.Chat)
 }
 
 func (s *Server) Start() error {

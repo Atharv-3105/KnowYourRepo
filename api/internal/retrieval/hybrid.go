@@ -2,6 +2,7 @@ package retrieval
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/sidecar"
 	"github.com/atharva-3105/KnowYourRepo/internal/store"
@@ -84,6 +85,10 @@ func (r *HybridRetriever) Search (ctx context.Context, query string) ([]Retrieva
 
 	for _, sr := range searchResults {
 
+		// fmt.Printf("Search result Metadata: %+v\n", sr.Metadata)
+		// fmt.Printf("Document: %s\n", sr.Document)
+
+		fmt.Println(sr.Metadata["file_path"])
 		symbolRaw, ok := sr.Metadata["symbol"]
 		if !ok {
 			continue
