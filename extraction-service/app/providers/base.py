@@ -19,12 +19,12 @@ class EmbedProvider(ABC):
 class LLMProvider(ABC):
     
     @abstractmethod
-    async def complete(self, prompt: str, system: str = "") -> str:
-        ... 
+    async def generate(self, prompt: str, system: str = "") -> str:
+        pass
         
-    @abstractmethod
+    # @abstractmethod
     async def stream(self, prompt: str, system: str = "") -> AsyncIterator[str]:
-        ...
+        pass
         
 
         
