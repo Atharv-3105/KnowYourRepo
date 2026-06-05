@@ -9,6 +9,7 @@ import (
 
 type SearchRequest struct {
 	Query   string    	`json:"query"`
+	RepoID  string      `json:"repo_id"`
 }
 
 func (h *RepoHandler) ExpandSymbolContext(c *gin.Context) {
@@ -50,7 +51,7 @@ func(h *RepoHandler) Search(c *gin.Context) {
 		)
 	}
 
-	results, err := h.hybridRetriever.Search(c.Request.Context(), req.Query)
+	results, err := h.hybridRetriever.Search(c.Request.Context(), req.Query,req.RepoID)
 
 	if err != nil {
 

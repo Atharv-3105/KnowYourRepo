@@ -7,4 +7,5 @@ type CreateRepoRequest struct {
 type CreateRepoResponse  struct{
 	Success  bool 		`json:"success"`
 	Message  string     `json:"message"`
+	RepoID   string     `json:"repo_id"`
 }

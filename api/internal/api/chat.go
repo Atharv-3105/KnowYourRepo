@@ -8,6 +8,7 @@ import (
 )
 
 type ChatRequest struct {
+	RepoID       string 	 `json:"repo_id"`
 	Question     string      `json:"question"`
 }
 
@@ -33,6 +34,7 @@ func (h *RepoHandler) Chat (c *gin.Context) {
 	//Hybrid Retrieval
 	results, err := h.hybridRetriever.Search(
 		c.Request.Context(),
+		req.RepoID,
 		req.Question,
 	)
 

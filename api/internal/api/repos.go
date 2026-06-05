@@ -71,13 +71,31 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 	}
 
 	ctx := context.Background()
+	repoID := generateRepoDirName()
 
 	repoDir := filepath.Join(
 		"..",
 		"data",
 		"repos",
-		generateRepoDirName(),
+		repoID,
 	)
+
+	//Insert the Repository with repo_id into the repositories tables
+	err := h.store.InsertRepository(ctx, store.Repository{
+					ID:		repoID,
+					RepoURL:   req.RepoURL,
+	})
+
+	if err != nil {
+		c.JSON(
+			http.StatusInternalServerError,
+			gin.H{
+				"error": err.Error(),
+			},
+		)
+
+		return 
+	}
 
 	h.logger.Info("starting repo ingestion", "repo_url", req.RepoURL)
 
@@ -231,6 +249,7 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 							ID:   fmt.Sprintf("%s_part_%d", ch.ID, idx),
 							Text:  ch.Content,
 							Metadata: map[string]interface{} {
+								"repo_id": repoID,
 								"file_path": ch.FilePath,
 								"language": ch.Language,
 								"symbol":   ch.SymbolName,
@@ -271,6 +290,7 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 	c.JSON(http.StatusOK, CreateRepoResponse{
 				Success: true,
 				Message: "repository ingested successfully",
+				RepoID: repoID,
 	})
 }
 

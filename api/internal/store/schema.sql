@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS call_edges (
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS repositories(
+    id      TEXT    PRIMARY KEY,
+    repo_url  TEXT  NOT NULL,
+    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
 CREATE INDEX IF NOT EXISTS idx_symbols_file_id ON symbols(file_id);
 CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_symbol_id);

@@ -17,6 +17,7 @@ async def search(request: SearchRequest):
         
         raw_results = await store.search(
             query_embedding=query_embedding,
+            repo_id  = request.repo_id,
             limit = request.limit,
         )
         

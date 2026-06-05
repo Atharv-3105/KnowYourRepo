@@ -20,9 +20,10 @@ class ChromaStore:
             metadatas=metadatas
         )
         
-    async def search(self, query_embedding: list[float],limit: int = 5) -> dict[str, Any]:
+    async def search(self, query_embedding: list[float],repo_id: str,limit: int = 5) -> dict[str, Any]:
         
         #Get the result from the collection
-        results = self.collection.query(query_embeddings=[query_embedding], n_results=limit)
+        results = self.collection.query(query_embeddings=[query_embedding],n_results=limit, where={"repo_id": repo_id})
         
         return results
+    

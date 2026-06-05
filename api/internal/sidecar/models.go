@@ -17,6 +17,7 @@ type EmbedResponse struct {
 
 type SearchRequest struct {
 	Query   string `json:"query"`
+	RepoID  string  `json:"repo_id"`
 	Limit   int     `json:"limit"`
 }
 

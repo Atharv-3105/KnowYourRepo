@@ -70,10 +70,11 @@ func (r *HybridRetriever) ExpandSymbol(ctx context.Context, symbol string) ([]Gr
 	return edges, nil
 }
 
-func (r *HybridRetriever) Search (ctx context.Context, query string) ([]RetrievalResult, error) {
+func (r *HybridRetriever) Search (ctx context.Context,repoID string,query string) ([]RetrievalResult, error) {
 
 	searchResults, err := r.sidecar.Search(ctx, sidecar.SearchRequest{
 		Query: query,
+		RepoID: repoID,
 		Limit: 5,
 	})
 
