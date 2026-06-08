@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/atharva-3105/KnowYourRepo/internal/chat"
 	"github.com/atharva-3105/KnowYourRepo/internal/chunk"
 	"github.com/atharva-3105/KnowYourRepo/internal/contextbuilder"
 	"github.com/atharva-3105/KnowYourRepo/internal/graph"
@@ -30,10 +31,11 @@ type RepoHandler struct {
 	extractor  	*graph.Extractor
 	cloner      *ingestion.Cloner
 	walker      *ingestion.Walker
-	graphRetriever   *retrieval.GraphRetriever
+	// graphRetriever   *retrieval.GraphRetriever
 	hybridRetriever  *retrieval.HybridRetriever
 	contextBuilder   *contextbuilder.Builder
 	ragService 		*rag.Service
+	chatStore       *chat.Store
 }
 
 func NewRepoHandler(
@@ -42,7 +44,7 @@ func NewRepoHandler(
 	sidecar  *sidecar.Client,
 ) *RepoHandler {
 
-	builder := contextbuilder.NewBuilder()
+	builder := contextbuilder.NewBuilder(logger)
 	return &RepoHandler{
 		logger:  logger,
 		store:   store,
@@ -51,10 +53,11 @@ func NewRepoHandler(
 		extractor: graph.NewExtractor(logger),
 		cloner:    ingestion.NewCloner(logger),
 		walker:    ingestion.NewWalker(logger),
-		graphRetriever:   retrieval.NewGraphRetriever(store),
-		hybridRetriever:  retrieval.NewHybridRetriever(store, sidecar),
+		// graphRetriever:   retrieval.NewGraphRetriever(store),
+		hybridRetriever:  retrieval.NewHybridRetriever(store, sidecar, logger),
 		contextBuilder:   builder,
-		ragService: 	  rag.NewService(builder, sidecar),
+		ragService: 	  rag.NewService(builder, sidecar, logger),
+		chatStore:		  chat.NewStore(),
 	}
 }
 
@@ -186,12 +189,24 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 
 		for _, edge := range edges {
 
-			err := h.store.InsertCallEdge(ctx, store.CallEdge{CallerSymbol: edge.Caller, CalleeSymbol: edge.Callee})
-
+			err := h.store.InsertCallEdge(ctx, 
+				store.CallEdge{
+					CallerSymbol: edge.Caller, 
+					CallerFilePath: file.Path,
+					CalleeSymbol: edge.Callee,
+				})
+			
 			if err != nil {
 
 				h.logger.Error("failed to store call edges", "caller", edge.Caller, "callee", edge.Callee, "error", err)
 			}
+
+			h.logger.Info(
+				"call_edge_inserted",
+				"caller", edge.Caller,
+				"caller_file_path", file.Path,
+				"callee", edge.Callee,
+			)
 
 			irFile.Calls = append(irFile.Calls, 
 			  			   representation.CallEdge{

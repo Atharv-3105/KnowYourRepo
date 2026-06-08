@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/atharva-3105/KnowYourRepo/internal/chat"
 	"github.com/gin-gonic/gin"
 )
 
 type ChatRequest struct {
 	RepoID       string 	 `json:"repo_id"`
 	Question     string      `json:"question"`
+	SessionID    string      `json:"session_id"`
 }
 
 type ChatResponse struct {
@@ -31,11 +33,30 @@ func (h *RepoHandler) Chat (c *gin.Context) {
 		return 
 	}
 
+	//Load History before Retrieval
+	history := h.chatStore.RecentMessages(req.SessionID, 6)
+	conversationContext := chat.BuildConversationContext(history)
+
+	h.logger.Info("conversation_loaded", "session_id", req.SessionID, "messages", len(history))
+
+	query := req.Question
+ 
+	// if len(history) > 0 {
+
+	// 	query = conversationContext + "\nCurrent Question:\n" + req.Question
+	// }
+
+	//Store User Message
+	h.chatStore.AddMessage(req.SessionID, "user", req.Question)
+	//log successfully saved
+	h.logger.Info("chat_message_saved", "session_id", req.SessionID, "role", "user")
+
+
 	//Hybrid Retrieval
 	results, err := h.hybridRetriever.Search(
 		c.Request.Context(),
 		req.RepoID,
-		req.Question,
+		query,
 	)
 
 	if err != nil {
@@ -54,7 +75,8 @@ func (h *RepoHandler) Chat (c *gin.Context) {
 	//Perform RAG
 	answer, err := h.ragService.AnswerQuestion(
 		c.Request.Context(),
-		req.Question,
+		query,
+		conversationContext,
 		results,
 	)
 	if err != nil {
@@ -68,6 +90,11 @@ func (h *RepoHandler) Chat (c *gin.Context) {
 
 		return 
 	}
+
+	//store assistant message 
+	h.chatStore.AddMessage(req.SessionID, "assistant", answer)
+	h.logger.Info("chat_message_saved", "session_id", req.SessionID, "role", "assistant")
+	
 
 	c.JSON(
 		http.StatusOK,

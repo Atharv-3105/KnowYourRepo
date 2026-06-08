@@ -1,17 +1,23 @@
-package store 
+package store
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
-func(s *Store) GetOutgoingCalls(ctx context.Context, caller string) ([]CallEdge, error){
+func(s *Store) GetOutgoingCalls(ctx context.Context,filePath string, callerSymbol string) ([]CallEdge, error){
 
 	query := `
-	SELECT 
-		caller_symbol,callee_symbol
+	SELECT DISTINCT
+		caller_symbol,
+		caller_file_path,
+		callee_symbol
 	FROM call_edges
 	WHERE caller_symbol = ?
+	AND caller_file_path = ?
 	`
 
-	rows, err := s.db.QueryContext(ctx, query, caller)
+	rows, err := s.db.QueryContext(ctx, query, callerSymbol, filePath)
 
 	if err != nil {
 		return nil, err 
@@ -25,9 +31,10 @@ func(s *Store) GetOutgoingCalls(ctx context.Context, caller string) ([]CallEdge,
 
 		var edge CallEdge
 
-		err := rows.Scan(&edge.CallerSymbol, &edge.CalleeSymbol)
+		err := rows.Scan(&edge.CallerSymbol, &edge.CallerFilePath, &edge.CalleeSymbol)
 
 		if err != nil {
+			fmt.Println("OUTGOING SCAN ERROR:", err)
 			continue
 		}
 

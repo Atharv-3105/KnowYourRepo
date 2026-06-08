@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS edges (
 CREATE TABLE IF NOT EXISTS call_edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     caller_symbol  TEXT NOT NULL,
+    caller_file_path TEXT NOT NULL,
     callee_symbol  TEXT NOT NULL,
 
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
