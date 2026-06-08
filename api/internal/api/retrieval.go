@@ -1,7 +1,7 @@
 package api  
 
 import (
-	"context"
+	// "context"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -12,29 +12,29 @@ type SearchRequest struct {
 	RepoID  string      `json:"repo_id"`
 }
 
-func (h *RepoHandler) ExpandSymbolContext(c *gin.Context) {
+// func (h *RepoHandler) ExpandSymbolContext(c *gin.Context) {
 
-	symbol := c.Param("symbol")
+// 	symbol := c.Param("symbol")
 
-	edges, err := h.graphRetriever.ExpandContext(context.Background(), symbol)
+// 	edges, err := h.graphRetriever.ExpandContext(context.Background(), symbol)
 
-	if err != nil {
+// 	if err != nil {
 
-		c.JSON(
-			http.StatusInternalServerError,
-			gin.H{
-				"error": err.Error(),
-			},
-		)
+// 		c.JSON(
+// 			http.StatusInternalServerError,
+// 			gin.H{
+// 				"error": err.Error(),
+// 			},
+// 		)
 
-		return 
-	}
+// 		return 
+// 	}
 
-	c.JSON(
-		http.StatusOK,
-		edges,
-	)
-}
+// 	c.JSON(
+// 		http.StatusOK,
+// 		edges,
+// 	)
+// }
 
 //Endpoint for Search
 func(h *RepoHandler) Search(c *gin.Context) {
@@ -51,7 +51,7 @@ func(h *RepoHandler) Search(c *gin.Context) {
 		)
 	}
 
-	results, err := h.hybridRetriever.Search(c.Request.Context(), req.Query,req.RepoID)
+	results, err := h.hybridRetriever.Search(c.Request.Context(), req.RepoID,req.Query)
 
 	if err != nil {
 
