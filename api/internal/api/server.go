@@ -23,13 +23,13 @@ type Server struct {
 func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	ctx := context.Background()
 	//Initialize the SQLite Store
-	dbStore, err := store.NewStore(ctx, "knowyourrepo.db", logger)
+	dbStore, err := store.NewStore(ctx, cfg.DB.Path, logger)
 	if err != nil{
 		return nil, err 
 	}
 
 	//Initialize the SideCar
-	sidecarClient := sidecar.NewClient("http://localhost:8000")
+	sidecarClient := sidecar.NewClient(cfg.Extractor.BaseURL)
 
 	//Initialize the GIN client
 	router := gin.Default()

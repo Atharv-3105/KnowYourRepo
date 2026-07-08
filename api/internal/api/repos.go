@@ -137,7 +137,7 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 		h.logger.Debug("processing_files", "path", file.Path)
 
 		//Insert file into the DB
-		fileID, err := h.store.InsertFile(ctx, file.Path, file.Language)
+		fileID, err := h.store.InsertFile(ctx, repoID, file.Path, file.Language)
 		if err != nil {
 			h.logger.Error("failed to insert file", "error", err)
 			continue
@@ -191,9 +191,10 @@ func (h *RepoHandler) CreateRepo(c *gin.Context) {
 
 			err := h.store.InsertCallEdge(ctx, 
 				store.CallEdge{
-					CallerSymbol: edge.Caller, 
+					RepoID:         repoID,
+					CallerSymbol:   edge.Caller, 
 					CallerFilePath: file.Path,
-					CalleeSymbol: edge.Callee,
+					CalleeSymbol:   edge.Callee,
 				})
 			
 			if err != nil {
