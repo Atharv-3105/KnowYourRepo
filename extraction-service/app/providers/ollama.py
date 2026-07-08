@@ -65,7 +65,7 @@ class OllamaProvider(EmbedProvider):
                 
                 tasks = []
             
-                for text in texts:
+                for text in batch:
                     
                     tasks.append(
                         client.post(f"{self.base_url}/api/embeddings",
