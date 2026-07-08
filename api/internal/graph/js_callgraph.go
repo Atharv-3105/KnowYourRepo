@@ -8,42 +8,32 @@ func ExtractJSCallGraph(root *sitter.Node, source []byte) []CallEdge {
 
 	var edges []CallEdge
 
-	var currentFunction string 
+	var walk func(node *sitter.Node, caller string)
 
-	var walk func(node *sitter.Node)
-
-	walk = func(node *sitter.Node) {
+	walk = func(node *sitter.Node, caller string) {
 
 		if node == nil {
 			return 
 		}
 
+		nextCaller := caller
+
 		//Common JS Function
-		if node.Type() == "function_declaration" {
+		if node.Type() == "function_declaration" || node.Type() == "method_definition" {
 			nameNode := node.ChildByFieldName("name")
 
 			if nameNode != nil {
-				currentFunction = nameNode.Content(source)
+				nextCaller = nameNode.Content(source)
 			}
 		}
 
 		//Variable-assigned arrow function
-		if node.Type() == "lexical_declaration" {
+		if node.Type() == "variable_declarator" {
+			nameNode := node.ChildByFieldName("name")
+			valueNode := node.ChildByFieldName("value")
 
-			for i := 0; i < int(node.ChildCount()); i++ {
-
-				child := node.Child(i)
-
-				if child.Type() == "variable_declarator" {
-
-					nameNode := child.ChildByFieldName("name")
-
-					valueNode := child.ChildByFieldName("value")
-
-					if nameNode != nil && valueNode != nil && valueNode.Type() == "arrow_function" {
-						currentFunction = nameNode.Content(source)
-					}
-				}
+			if nameNode != nil && valueNode != nil && valueNode.Type() == "arrow_function" {
+				nextCaller = nameNode.Content(source)
 			}
 		}
 
@@ -52,23 +42,22 @@ func ExtractJSCallGraph(root *sitter.Node, source []byte) []CallEdge {
 
 			functionNode := node.ChildByFieldName("function")
 
-			if functionNode != nil && currentFunction != "" {
+			if functionNode != nil && caller != "" {
 				callee := functionNode.Content(source)
 
 				edges = append(edges, CallEdge{
-						Caller: currentFunction,
+						Caller: caller,
 						Callee: callee,
 				})
 			}
 		}
 
 		for i := 0; i < int(node.ChildCount()); i++ {
-			walk(node.Child(i))
+			walk(node.Child(i), nextCaller)
 		}
 	}
 
-	walk(root)
-
+	walk(root, "")
 	return edges
 
 }

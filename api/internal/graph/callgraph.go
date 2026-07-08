@@ -13,23 +13,24 @@ type CallEdge struct {
 func ExtractGoCallGraph(root *sitter.Node, source []byte) []CallEdge{
 
 	var edges []CallEdge
-	var currentFunction string 
 
-	var walk func(node *sitter.Node)
+	var walk func(node *sitter.Node, caller string)
 
-	walk = func(node *sitter.Node) {
+	walk = func(node *sitter.Node, caller string) {
 
 		if node == nil {
 			return 
 		}
 
+		nextCaller := caller
+
 		//Track current function
-		if node.Type() == "function_declaration" {
+		if node.Type() == "function_declaration" || node.Type() == "method_declaration" {
 
 			nameNode := node.ChildByFieldName("name")
 
 			if nameNode != nil {
-				currentFunction = nameNode.Content(source)
+				nextCaller = nameNode.Content(source)
 			}
 		}
 
@@ -38,24 +39,24 @@ func ExtractGoCallGraph(root *sitter.Node, source []byte) []CallEdge{
 
 			functionNode := node.ChildByFieldName("function") 
 
-			if functionNode != nil && currentFunction != "" {
+			if functionNode != nil && caller != "" {
 
 				callee := functionNode.Content(source)
 
 				edges = append(edges,
 							   CallEdge{
-									Caller: currentFunction,
+									Caller: caller,
 									Callee: callee,
 							   })
 			}
 		}
 
 		for i := 0; i < int(node.ChildCount()); i++ {
-			walk(node.Child(i))
+			walk(node.Child(i), nextCaller)
 		}
 	}
 
-	walk(root)
+	walk(root, "")
 
 	return edges
 }
