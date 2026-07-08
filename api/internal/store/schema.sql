@@ -1,8 +1,10 @@
 CREATE TABLE IF NOT EXISTS files (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    path TEXT NOT NULL UNIQUE,
+    repo_id TEXT NOT NULL,
+    path TEXT NOT NULL,
     language TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(repo_id, path)
 );
 
 CREATE TABLE IF NOT EXISTS symbols (
@@ -26,6 +28,7 @@ CREATE TABLE IF NOT EXISTS edges (
 
 CREATE TABLE IF NOT EXISTS call_edges (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    repo_id TEXT NOT NULL,
     caller_symbol  TEXT NOT NULL,
     caller_file_path TEXT NOT NULL,
     callee_symbol  TEXT NOT NULL,

@@ -6,9 +6,10 @@ import (
 )
 
 type CallEdge struct {
+	RepoID        string
 	CallerSymbol  string 
 	CallerFilePath string 
-	CalleeSymbol  string 
+	CalleeSymbol  string
 }
 
 
@@ -16,14 +17,15 @@ func (s *Store) InsertCallEdge(ctx context.Context, edge CallEdge)error{
 
 	query := `
 	INSERT INTO call_edges (
+		repo_id,
 		caller_symbol,
 		caller_file_path,
 		callee_symbol
 	)
-	VALUES (?, ?, ?)
+	VALUES (?, ?, ?, ?)
 	`
 
-	_, err := s.db.ExecContext(ctx, query, edge.CallerSymbol, edge.CallerFilePath, edge.CalleeSymbol)
+	_, err := s.db.ExecContext(ctx, query, edge.RepoID, edge.CallerSymbol, edge.CallerFilePath, edge.CalleeSymbol)
 
 	if err != nil {
 		return fmt.Errorf("failed to insert call edges: %w", err)

@@ -13,18 +13,28 @@ type File struct {
 }
 
 
-func(s *Store) InsertFile(ctx context.Context, path, language string) (int64, error) {
+func(s *Store) InsertFile(ctx context.Context, repoID, path, language string) (int64, error) {
 	query := `
-	INSERT INTO files (path, language)
-	VALUES  (?, ?)
-	ON CONFLICT(path) DO NOTHING
+	INSERT INTO files (repo_id, path, language)
+	VALUES  (?, ?, ?)
+	ON CONFLICT(repo_id, path) DO NOTHING
 	`
 
-	res, err := s.db.ExecContext(ctx, query, path, language)
+	res, err := s.db.ExecContext(ctx, query, repoID, path, language)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert file: %w", err)
 	}
 
-	id, _ := res.LastInsertId()
-	return id, nil
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected > 0 {
+		id, _ := res.LastInsertId()
+		return id, nil
+	}
+
+	var existingID int64
+	err = s.db.QueryRowContext(ctx, "SELECT id FROM files WHERE repo_id = ? AND path = ?", repoID, path).Scan(&existingID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get existing file ID: %w", err)
+	}
+	return existingID, nil
 }
