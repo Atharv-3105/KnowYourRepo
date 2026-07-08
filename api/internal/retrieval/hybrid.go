@@ -40,15 +40,15 @@ func NewHybridRetriever(store *store.Store, sidecar *sidecar.Client, logger *slo
 	}
 }
 
-func (r *HybridRetriever) ExpandSymbol(ctx context.Context,filePath string, symbol string) ([]GraphEdge, error) {
+func (r *HybridRetriever) ExpandSymbol(ctx context.Context, repoID, filePath, symbol string) ([]GraphEdge, error) {
 
-	outgoing, err := r.store.GetOutgoingCalls(ctx, filePath, symbol)
+	outgoing, err := r.store.GetOutgoingCalls(ctx, repoID, filePath, symbol)
 
 	if err != nil {
 		return nil, err
 	}
 
-	incoming, err := r.store.GetIncomingCalls(ctx, symbol)
+	incoming, err := r.store.GetIncomingCalls(ctx, repoID, symbol)
 
 	if err != nil {
 		return nil, err
@@ -140,7 +140,7 @@ func (r *HybridRetriever) Search (ctx context.Context,repoID string,query string
 		)
 
 		//Graph Expansion Logic
-		edges, err := r.ExpandSymbol(ctx,filePath, symbol)
+		edges, err := r.ExpandSymbol(ctx, repoID, filePath, symbol)
 		if err != nil {
 			continue
 		}
