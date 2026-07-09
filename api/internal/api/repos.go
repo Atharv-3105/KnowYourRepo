@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/atharva-3105/KnowYourRepo/internal/architecture"
 	"github.com/atharva-3105/KnowYourRepo/internal/chat"
 	"github.com/atharva-3105/KnowYourRepo/internal/chunk"
 	"github.com/atharva-3105/KnowYourRepo/internal/contextbuilder"
@@ -36,6 +37,7 @@ type RepoHandler struct {
 	contextBuilder   *contextbuilder.Builder
 	ragService 		*rag.Service
 	chatStore       *chat.Store
+	architectureService   *architecture.Service
 }
 
 func NewRepoHandler(
@@ -45,6 +47,8 @@ func NewRepoHandler(
 ) *RepoHandler {
 
 	builder := contextbuilder.NewBuilder(logger)
+	architectureAnalyzer := architecture.NewAnalyzer(logger, store)
+	architectureService  := architecture.NewService(logger, architectureAnalyzer)
 	return &RepoHandler{
 		logger:  logger,
 		store:   store,
@@ -58,6 +62,7 @@ func NewRepoHandler(
 		contextBuilder:   builder,
 		ragService: 	  rag.NewService(builder, sidecar, logger),
 		chatStore:		  chat.NewStore(),
+		architectureService: architectureService,
 	}
 }
 

@@ -68,6 +68,9 @@ func (s *Server) registerRoutes() {
 
 	//Chat Route
 	s.router.POST("/chat", repoHandler.Chat)
+
+	//Architecture Route
+	s.router.GET("/architecture/:repoID", repoHandler.GetArchitecture)
 }
 
 func (s *Server) Start() error {
