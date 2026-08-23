@@ -1,10 +1,7 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
-
 
 class EmbedProvider(ABC):
     async def embed(self, text:str) -> list[float]:
-        
         pass 
 
 
@@ -17,14 +14,19 @@ class EmbedProvider(ABC):
 
 
 class LLMProvider(ABC):
+    """
+        The base LLM backend, implementation returns token_usage so the router
+        can enforce per-minute token budget directly at client-side
+    """
+    
     
     @abstractmethod
-    async def generate(self, prompt: str, system: str = "") -> str:
-        pass
-        
-    # @abstractmethod
-    async def stream(self, prompt: str, system: str = "") -> AsyncIterator[str]:
-        pass
+    async def generate(self, prompt: str, system_prompt: str = "") -> tuple[str, int]:
+        """ 
+            Returns (content, token_used)
+            Raises ProviderError on failure
+        """
+        ...
         
 
         

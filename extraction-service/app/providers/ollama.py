@@ -61,8 +61,6 @@ class OllamaProvider(EmbedProvider):
             for i in range(0, len(texts), BATCH_SIZE):
                 
                 batch = texts[i: i + BATCH_SIZE]
-                
-                
                 tasks = []
             
                 for text in batch:
