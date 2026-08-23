@@ -1,5 +1,5 @@
-from app.providers.groq_provider import GroqProvider
-provider = GroqProvider()
+from app.providers.factory import get_llm_router
+router = get_llm_router()
 
 async def generate_answer(context: str, question: str) -> str:
     
@@ -15,4 +15,4 @@ async def generate_answer(context: str, question: str) -> str:
     Answer the question using only the repository context.
     """
     
-    return await provider.generate(prompt)
+    return await router.complete(prompt, task_type = "answer")

@@ -17,7 +17,20 @@ class Settings(BaseSettings):
     
     #GROQ config
     groq_api_key:str = ""
-    groq_model: str = "llama-3.1-70b-versatile"
+    groq_model: str = "llama-3.3-70b-versatile"
+    
+    #GEMINI config
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.5-flash"
+    
+    #CEREBRAS config
+    cerebras_api_key: str = ""
+    cerebras_model: str = "llama3.3-70b"
+    
+    #OpenRouter
+    openrouter_api_key: str = ""
+    openrouter_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
+    
     
     #ChromaDB
     chroma_path:str = "./chroma_data"
