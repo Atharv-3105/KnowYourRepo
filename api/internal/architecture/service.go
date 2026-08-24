@@ -34,7 +34,7 @@ func(s *Service) BuildSummary(ctx context.Context, repoID string) (*Summary, err
 		return nil, err 
 	}
 
-	s.logger.Error("architecture_service_completed",
+	s.logger.Info("architecture_service_completed",
 				   "repo_id", repoID, "files", summary.Statistics.FileCount,
 				   "symbols", summary.Statistics.SymbolCount, "components", len(summary.Components),
 				   "entrypoints", len(summary.EntryPoints))		
