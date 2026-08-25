@@ -71,6 +71,9 @@ func (s *Server) registerRoutes() {
 
 	//Architecture Route
 	s.router.GET("/architecture/:repoID", repoHandler.GetArchitecture)
+
+	//Agent-Based Chat Route
+	s.router.POST("/agent/chat", repoHandler.AgentChat)
 }
 
 func (s *Server) Start() error {

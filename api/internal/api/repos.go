@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/atharva-3105/KnowYourRepo/internal/agent"
+	"github.com/atharva-3105/KnowYourRepo/internal/agent/tools"
 	"github.com/atharva-3105/KnowYourRepo/internal/architecture"
 	"github.com/atharva-3105/KnowYourRepo/internal/chat"
 	"github.com/atharva-3105/KnowYourRepo/internal/chunk"
@@ -38,6 +40,7 @@ type RepoHandler struct {
 	ragService 		*rag.Service
 	chatStore       *chat.Store
 	architectureService   *architecture.Service
+	agentService 		*agent.Service
 }
 
 func NewRepoHandler(
@@ -49,6 +52,22 @@ func NewRepoHandler(
 	builder := contextbuilder.NewBuilder(logger)
 	architectureAnalyzer := architecture.NewAnalyzer(logger, store)
 	architectureService  := architecture.NewService(logger, architectureAnalyzer)
+
+	hybridRetriever := retrieval.NewHybridRetriever(store, sidecar, logger)
+	ragService	:= rag.NewService(builder, sidecar, logger)
+	//instantiate the agent tool map
+	agentTools := map[agent.ToolName]agent.Tool{
+		agent.ToolSemantic:		tools.NewSemanticTool(hybridRetriever),
+		agent.ToolGraph:		tools.NewGraphTool(store),
+		agent.ToolMemory:		tools.NewMemoryTool(),
+		agent.ToolArchitecture:	tools.NewArchitectureTool(architectureService),
+	}
+
+	fallbackPlanner := agent.NewPlanner()
+	hybridPlanner := agent.NewHybridPlanner(sidecar, fallbackPlanner, logger)
+	executor := agent.NewExecutor(agentTools, logger)
+	agentService := agent.NewService(hybridPlanner, executor, ragService, logger)
+
 	return &RepoHandler{
 		logger:  logger,
 		store:   store,
@@ -63,6 +82,7 @@ func NewRepoHandler(
 		ragService: 	  rag.NewService(builder, sidecar, logger),
 		chatStore:		  chat.NewStore(),
 		architectureService: architectureService,
+		agentService: agentService,
 	}
 }
 

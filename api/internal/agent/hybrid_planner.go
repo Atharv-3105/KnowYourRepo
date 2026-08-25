@@ -69,7 +69,7 @@ func(p *HybridPlanner) planWithLLM(ctx context.Context, query, history string) (
 		return nil, err 
 	}
 
-	return toValidToolNames(resp.Tools), nil 
+	return toValidToolName(resp.Tools), nil 
 }
 
 

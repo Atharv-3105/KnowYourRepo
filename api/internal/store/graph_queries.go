@@ -84,3 +84,44 @@ func(s *Store) GetIncomingCalls(ctx context.Context, repoID, callee string) ([]C
 
 	return edges, nil
 }
+
+
+
+func(s *Store) GetOutgoingCallsBySymbol(ctx context.Context, repoID, callerSymbol string) ([]CallEdge, error) {
+
+	query := `
+	SELECT DISTINCT
+		repo_id,
+		caller_symbol,
+		caller_file_path,
+		callee_symbol
+	FROM call_edges
+	WHERE repo_id = ?
+	AND caller_symbol = ?
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, repoID, callerSymbol)
+	if err != nil {
+		return nil, err 
+	}
+
+	defer rows.Close()
+
+	var edges []CallEdge
+
+	for rows.Next(){
+
+		var edge CallEdge 
+
+		err := rows.Scan(&edge.RepoID, &edge.CallerSymbol, &edge.CallerFilePath, &edge.CalleeSymbol)
+
+		if err != nil {
+			continue 
+		}
+
+		edges = append(edges, edge)
+	}
+
+	return edges, nil 
+}
+
