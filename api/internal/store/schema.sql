@@ -1,15 +1,15 @@
 CREATE TABLE IF NOT EXISTS files (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     repo_id TEXT NOT NULL,
     path TEXT NOT NULL,
     language TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMPTZ DEFAULT now(),
     UNIQUE(repo_id, path)
 );
 
 CREATE TABLE IF NOT EXISTS symbols (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    file_id INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+    file_id BIGINT NOT NULL,
     name TEXT NOT NULL,
     type TEXT NOT NULL, --function, class, method
     start_line INTEGER,
@@ -18,28 +18,27 @@ CREATE TABLE IF NOT EXISTS symbols (
 );
 
 CREATE TABLE IF NOT EXISTS edges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    from_symbol_id INTEGER NOT NULL,
-    to_symbol_id  INTEGER NOT NULL,
+    id BIGSERIAL PRIMARY KEY,
+    from_symbol_id BIGINT NOT NULL,
+    to_symbol_id  BIGINT NOT NULL,
     type TEXT NOT NULL,
     FOREIGN KEY(from_symbol_id) REFERENCES symbols(id),
     FOREIGN KEY(to_symbol_id) REFERENCES symbols(id)
 );
 
 CREATE TABLE IF NOT EXISTS call_edges (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id BIGSERIAL PRIMARY KEY,
     repo_id TEXT NOT NULL,
     caller_symbol  TEXT NOT NULL,
     caller_file_path TEXT NOT NULL,
     callee_symbol  TEXT NOT NULL,
-
-    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at  TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS repositories(
     id      TEXT    PRIMARY KEY,
     repo_url  TEXT  NOT NULL,
-    created_at   DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at   TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);

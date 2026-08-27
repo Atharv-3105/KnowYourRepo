@@ -12,7 +12,7 @@ type Repository struct {
 func(s *Store) InsertRepository(ctx context.Context, repo Repository) error{
 	query := `
 	INSERT INTO repositories(id, repo_url)
-	VALUES(?,?)`
+	VALUES($1,$2)`
 
 	_, err := s.db.ExecContext(ctx, query, repo.ID, repo.RepoURL)
 

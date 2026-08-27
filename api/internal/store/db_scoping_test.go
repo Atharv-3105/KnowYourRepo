@@ -2,26 +2,15 @@ package store
 
 import (
 	"context"
-	"log/slog"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 )
 
 func TestInsertFile_RepositoryScoping(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
-
-	s, err := NewStore(ctx, dbPath, logger)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer s.Close()
+	s := newTestStore(t)
 
 	// 1. Insert file "main.go" under repo_1
 	id1, err := s.InsertFile(ctx, "repo_1", "main.go", "go")
@@ -51,21 +40,13 @@ func TestInsertFile_RepositoryScoping(t *testing.T) {
 }
 
 func TestCallGraph_RepositoryScoping(t *testing.T) {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
-
-	s, err := NewStore(ctx, dbPath, logger)
-	if err != nil {
-		t.Fatalf("Failed to create store: %v", err)
-	}
-	defer s.Close()
+	s := newTestStore(t)
 
 	// Insert CallEdge for repo_1
-	err = s.InsertCallEdge(ctx, CallEdge{
+	err := s.InsertCallEdge(ctx, CallEdge{
 		RepoID:         "repo_1",
 		CallerSymbol:   "main",
 		CallerFilePath: "main.go",

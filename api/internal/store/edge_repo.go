@@ -13,7 +13,7 @@ type Edge struct {
 func(s *Store) InsertEdge(e Edge) error {
 	query := `
 	INSERT INTO edges (from_symbol_id, to_symbol_id, type)
-	VALUES  (?, ?, ?)`
+	VALUES  ($1, $2, $3)`
 
 	_, err := s.db.Exec(query, e.FromSymbolID, e.ToSymbolID, e.Type)
 	if err != nil {

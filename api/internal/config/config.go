@@ -21,7 +21,7 @@ type ExtractorConfig struct {
 }
 
 type DBConfig struct {
-	Path   string 
+	DSN   string 
 }
 
 func (s ServerConfig) Addr() string {
@@ -39,7 +39,7 @@ func Load() (*Config, error) {
 			BaseURL: getEnv("EXTRACTOR_URL", "http://localhost:8000"),
 		},
 		DB:  DBConfig{
-			Path:   getEnv("DB_PATH", "./data/codebase.db"),
+			DSN:   getEnv("DATABASE_URL", "postgres://postgres:atharva@localhost:5432/knowyourrepo?sslmode=disable"),
 		},
 	}
 	return cfg, nil

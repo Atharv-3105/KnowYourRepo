@@ -23,7 +23,7 @@ type Server struct {
 func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	ctx := context.Background()
 	//Initialize the SQLite Store
-	dbStore, err := store.NewStore(ctx, cfg.DB.Path, logger)
+	dbStore, err := store.NewStore(ctx, cfg.DB.DSN, logger)
 	if err != nil{
 		return nil, err 
 	}

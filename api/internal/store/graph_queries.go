@@ -14,9 +14,9 @@ func(s *Store) GetOutgoingCalls(ctx context.Context, repoID, filePath, callerSym
 		caller_file_path,
 		callee_symbol
 	FROM call_edges
-	WHERE repo_id = ?
-	AND caller_symbol = ?
-	AND caller_file_path = ?
+	WHERE repo_id = $1
+	AND caller_symbol = $2
+	AND caller_file_path = $3
 	`
 
 	rows, err := s.db.QueryContext(ctx, query, repoID, callerSymbol, filePath)
@@ -55,8 +55,8 @@ func(s *Store) GetIncomingCalls(ctx context.Context, repoID, callee string) ([]C
 		caller_file_path,
 		callee_symbol
 	FROM call_edges
-	WHERE repo_id = ?
-	AND callee_symbol = ?
+	WHERE repo_id = $1
+	AND callee_symbol = $2
 	`
 
 	rows, err := s.db.QueryContext(ctx, query, repoID, callee)
@@ -96,8 +96,8 @@ func(s *Store) GetOutgoingCallsBySymbol(ctx context.Context, repoID, callerSymbo
 		caller_file_path,
 		callee_symbol
 	FROM call_edges
-	WHERE repo_id = ?
-	AND caller_symbol = ?
+	WHERE repo_id = $1
+	AND caller_symbol = $2
 	`
 
 	rows, err := s.db.QueryContext(ctx, query, repoID, callerSymbol)

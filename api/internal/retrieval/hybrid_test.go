@@ -54,12 +54,20 @@ func TestHybridRetriever_Search(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// 2. Initialize in-memory SQLite Store
-	dbStore, err := store.NewStore(ctx, ":memory:", logger)
+	// 2. Initialize Store
+	dsn := os.Getenv("TEST_DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://postgres:password@localhost:5432/knowyourrepo?sslmode=disable"
+	}
+
+	dbStore, err := store.NewStore(ctx, dsn, logger)
 	if err != nil {
 		t.Fatalf("Failed to create store: %v", err)
 	}
 	defer dbStore.Close()
+	defer func() {
+		dbStore.DB().ExecContext(context.Background(), "TRUNCATE TABLE call_edges, edges, symbols, files, repositories RESTART IDENTITY CASCADE")
+	}()
 
 	// Populate SQLite metadata and call edges
 	_, err = dbStore.InsertFile(ctx, "repo_1", "main.go", "go")

@@ -22,7 +22,7 @@ func (s *Store) InsertCallEdge(ctx context.Context, edge CallEdge)error{
 		caller_file_path,
 		callee_symbol
 	)
-	VALUES (?, ?, ?, ?)
+	VALUES ($1, $2, $3, $4)
 	`
 
 	_, err := s.db.ExecContext(ctx, query, edge.RepoID, edge.CallerSymbol, edge.CallerFilePath, edge.CalleeSymbol)

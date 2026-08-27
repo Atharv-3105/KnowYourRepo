@@ -31,7 +31,7 @@ func(s *Store) GetFiles(ctx context.Context, repoID string) ([]ArchitectureFile,
 	query :=  `
 		SELECT id, repo_id, path, language
 		FROM files 
-		WHERE repo_id = ?
+		WHERE repo_id = $1
 		ORDER BY path
 	`
 
@@ -69,7 +69,7 @@ func(s *Store) GetSymbols(ctx context.Context, repoID string) ([]ArchitectureSym
 		SELECT s.id, s.file_id, s.name, s.type, s.start_line, s.end_line
 		FROM symbols s
 		INNER JOIN files f ON s.file_id = f.id
-		WHERE f.repo_id = ?
+		WHERE f.repo_id = $1
 		ORDER BY f.path, s.start_line
 	`
 
@@ -105,7 +105,7 @@ func(s *Store) GetCallEdges(ctx context.Context, repoID string) ([]ArchitectureC
 	query := `
 		SELECT caller_symbol, caller_file_path, callee_symbol
 		FROM call_edges
-		WHERE repo_id = ?
+		WHERE repo_id = $1
 		ORDER BY caller_symbol
 	`
 
@@ -135,12 +135,13 @@ func(s *Store) GetCallEdges(ctx context.Context, repoID string) ([]ArchitectureC
 	return edges, rows.Err()
 }
 
+//Function to get the Language from files table
 func(s *Store) GetLanguages(ctx context.Context, repoID string) ([]string, error) {
 
 	query := `
 		SELECT DISTINCT language
 		FROM files
-		WHERE repo_id = ?
+		WHERE repo_id = $1
 		ORDER BY language
 	`
 
