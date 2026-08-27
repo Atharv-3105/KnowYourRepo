@@ -2,12 +2,12 @@ from fastapi import APIRouter, HTTPException
 
 from app.models.search import SearchRequest, SearchResult
 from app.providers.factory import get_embed_provider
-from app.vectorstore.chroma import ChromaStore
+from app.vectorstore.pgvector_store import PgVectorStore
 
 router = APIRouter()
 
 provider = get_embed_provider()
-store = ChromaStore()
+store = PgVectorStore()
 
 @router.post("/search", response_model=list[SearchResult])
 async def search(request: SearchRequest):

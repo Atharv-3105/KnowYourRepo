@@ -7,7 +7,7 @@ from app.models.classify import ALLOWED_TOOLS, ClassifyResponse
 from app.providers.factory import get_llm_router
 from app.providers.errors import ProviderError
 
-logger = logging.getLogget("classify_service")
+logger = logging.getLogger("classify_service")
 
 router = get_llm_router()
 

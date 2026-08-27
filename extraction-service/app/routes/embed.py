@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException
 import traceback 
 from app.models.embed import EmbedBatchRequest, EmbedBatchResponse
-from app.vectorstore.chroma import ChromaStore
+from app.vectorstore.pgvector_store import PgVectorStore
 from app.providers.factory import get_embed_provider
 
 router = APIRouter()
 
 provider = get_embed_provider()
-store = ChromaStore()
+store = PgVectorStore()
 
 CHROMA_BATCH_SIZE = 128
 

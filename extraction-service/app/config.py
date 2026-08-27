@@ -7,6 +7,9 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     
+    #Postgres (shared with the Go service)
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/knowyourrepo"
+    
     #LLM Provider selection
     llm_provider:str = "groq"
     embed_provider:str = "ollama"

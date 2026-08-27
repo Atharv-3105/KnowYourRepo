@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import os 
 from dotenv import load_dotenv
-from google import genai 
-from google.genai import types 
-
+from google import genai
+from google.genai import types
 from app.providers.base import LLMProvider
 from app.providers.errors import ProviderError
 
