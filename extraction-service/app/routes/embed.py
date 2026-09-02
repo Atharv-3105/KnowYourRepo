@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 import traceback 
-from app.models.embed import EmbedBatchRequest, EmbedBatchResponse
+from app.models.embed import EmbedBatchRequest, EmbedBatchResponse, DeleteEmbeddingsRequest, DeleteEmbeddingsResponse
 from app.vectorstore.pgvector_store import PgVectorStore
 from app.providers.factory import get_embed_provider
 
@@ -52,3 +52,14 @@ async def embed_batch(request: EmbedBatchRequest)-> EmbedBatchResponse:
             status_code=500,
             detail = repr(e),
         )
+        
+@router.delete("/embed", response_model = DeleteEmbeddingsResponse)
+async def delete_embeddings(request: DeleteEmbeddingsRequest) -> DeleteEmbeddingsResponse:
+    
+    try:
+        deleted = await store.delete_by_file(request.repo_id, request.file_path)
+        return DeleteEmbeddingsResponse(success = True, deleted = deleted)
+    
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code = 500, detail = repr(e))

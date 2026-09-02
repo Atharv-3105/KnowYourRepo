@@ -3,13 +3,12 @@ from __future__ import annotations
 import json 
 from typing import Any 
 
-import psycopg2
+import psycopg
 from psycopg_pool import AsyncConnectionPool 
-from pgvector.psycopg import register_vector_async 
 
 from app.config import settings 
 
-EMBEDDING_DIMENSION = 768 
+EMBEDDING_DIMENSIONS = settings.voyage_dimension
 
 class PgVectorStore:
     """ 
@@ -30,28 +29,27 @@ class PgVectorStore:
         if self._pool is None:
             
             pool = AsyncConnectionPool(self.dsn, open = False)
-            await pool.Open()
+            await pool.open()
             
             async with pool.connection() as conn:
-                await register_vector_async(conn)
                 await self._ensure_schema(conn)
                 
             self._pool = pool 
             
         return self._pool
     
-    async def _ensure_schema(self, conn: psycopg2.AsyncConnection) -> None:
+    async def _ensure_schema(self, conn: psycopg.AsyncConnection) -> None:
         
         await conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
         
         await conn.execute(
-            """ 
+            f""" 
                 CREATE TABLE IF NOT EXISTS {self.table_name} (
                     id TEXT PRIMARY KEY,
                     repo_id TEXT NOT NULL,
                     document TEXT NOT NULL,
                     metadata JSONB NOT NULL,
-                    embedding VECTOR({EMBEDDING_DIMENSION}) NOT NULL
+                    embedding VECTOR({EMBEDDING_DIMENSIONS}) NOT NULL
                 )
             """
         )
@@ -59,6 +57,8 @@ class PgVectorStore:
         await conn.execute(f"""CREATE INDEX IF NOT EXISTS idx_{self.table_name}_repo_id ON {self.table_name} (repo_id)""")
         
         await conn.execute(f"""CREATE INDEX IF NOT EXISTS idx_{self.table_name}_embedding_hnsw ON {self.table_name} USING hnsw (embedding vector_l2_ops)""")
+        
+        await conn.commit()
         
     
     async def add_documents(self, ids: list[str], embeddings: list[list[float]], documents: list[str], metadatas: list[dict[str, Any]]):
@@ -76,7 +76,7 @@ class PgVectorStore:
                     await curr.execute(
                         f"""
                             INSERT INTO {self.table_name} (id, repo_id, document, metadata, embedding)
-                            VALUES (%s, %s, %s, %s, %s)
+                            VALUES (%s, %s, %s, %s, %s::vector)
                             ON CONFLICT (id) DO UPDATE SET
                                 document = EXCLUDED.document,
                                 metadata = EXCLUDED.metadata,
@@ -101,10 +101,10 @@ class PgVectorStore:
                 
                 await curr.execute(
                     f""" 
-                        SELECT id, document, metadata, embedding <-> %s AS distance
+                        SELECT id, document, metadata, embedding <-> %s::vector AS distance
                         FROM {self.table_name}
                         WHERE repo_id = %s
-                        ORDER BY embedding <-> %s
+                        ORDER BY embedding <-> %s::vector
                         LIMIT %s
                     """,
                     (query_embedding, repo_id, query_embedding, limit),
@@ -125,3 +125,30 @@ class PgVectorStore:
             "distances": [distances],
         }
         
+    async def delete_by_file(self, repo_id: str, file_path: str) -> int:
+        """
+            This function deletes all the embedding rows for a specific file within a repo
+            used during incremental re-indexing when a file changes or is removed. Returns the number
+            of rows deleted
+        """
+        
+        pool = await self._get_pool()
+        
+        async with pool.connection() as conn:
+            
+            async with conn.cursor() as cur:
+                
+                await cur.execute(
+                    f"""
+                        DELETE FROM {self.table_name}
+                        WHERE repo_id = %s AND metadata->>'file_path' = %s
+                    """,
+                    (repo_id, file_path),
+                )
+                
+                deleted = cur.rowcount
+            
+            await conn.commit()
+            
+        
+        return deleted 

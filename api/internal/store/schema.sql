@@ -41,7 +41,23 @@ CREATE TABLE IF NOT EXISTS repositories(
     created_at   TIMESTAMPTZ DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS ingestion_jobs(
+    id      TEXT     PRIMARY KEY,
+    repo_url  TEXT NOT NULL,
+    status    TEXT NOT NULL DEFAULT 'pending',    --can be pending, processing, completed, failed
+    error_message  TEXT,
+    created_at   TIMESTAMPTZ DEFAULT now(),
+    updated_at   TIMESTAMPTZ DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_files_path ON files(path);
 CREATE INDEX IF NOT EXISTS idx_symbols_file_id ON symbols(file_id);
 CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_symbol_id);
 CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_symbol_id);
+
+ALTER TABLE repositories ADD COLUMN IF NOT EXISTS last_commit_sha TEXT;
+ALTER TABLE repositories ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
+ALTER TABLE files ADD COLUMN IF NOT EXISTS hash TEXT;
+
+ALTER TABLE symbols DROP CONSTRAINT IF EXISTS symbols_file_id_fkey;
+ALTER TABLE symbols ADD CONSTRAINT symbols_file_id_fkey FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE;

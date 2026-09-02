@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     
     #LLM Provider selection
     llm_provider:str = "groq"
-    embed_provider:str = "ollama"
+    embed_provider:str = "voyage"
     
     #Ollama Provider
     ollama_base_url:str = "http://localhost:11434"
@@ -33,12 +33,10 @@ class Settings(BaseSettings):
     #OpenRouter
     openrouter_api_key: str = ""
     openrouter_model: str = "nvidia/nemotron-3-ultra-550b-a55b:free"
-    
-    
-    #ChromaDB
-    chroma_path:str = "./chroma_data"
-    chroma_collection: str = "collection"
-    
-    
+
+    #Voyage AI (code-specialized embeddings)
+    voyage_api_key: str = ""
+    voyage_model: str = "voyage-code-3"
+    voyage_dimension: int = 1024
     
 settings = Settings()

@@ -73,7 +73,7 @@ func looksLikeIdentifier(s string) bool {
 		}
 	}
 
-	return hasUpper && hasLower && len(s) > 3
+	return hasUpper && hasLower && len(s) >= 3
 }
 
 func(t *GraphTool) Execute(ctx context.Context,req agent.ToolRequest) (agent.ToolResult, error){

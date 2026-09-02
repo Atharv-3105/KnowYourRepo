@@ -70,7 +70,7 @@ func TestHybridRetriever_Search(t *testing.T) {
 	}()
 
 	// Populate SQLite metadata and call edges
-	_, err = dbStore.InsertFile(ctx, "repo_1", "main.go", "go")
+	_, err = dbStore.InsertFile(ctx, "repo_1", "main.go", "go", "")
 	if err != nil {
 		t.Fatalf("Failed to insert file: %v", err)
 	}

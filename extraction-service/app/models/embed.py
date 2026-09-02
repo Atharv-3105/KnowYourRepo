@@ -11,3 +11,13 @@ class EmbedBatchRequest(BaseModel):
 class EmbedBatchResponse(BaseModel):
     success: bool
     count:  int
+    
+class DeleteEmbeddingsRequest(BaseModel):
+    repo_id:    str 
+    file_path:  str 
+    
+class DeleteEmbeddingsResponse(BaseModel):
+    success:    bool 
+    deleted:    int 
+    
+    

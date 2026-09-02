@@ -13,13 +13,13 @@ func TestInsertFile_RepositoryScoping(t *testing.T) {
 	s := newTestStore(t)
 
 	// 1. Insert file "main.go" under repo_1
-	id1, err := s.InsertFile(ctx, "repo_1", "main.go", "go")
+	id1, err := s.InsertFile(ctx, "repo_1", "main.go", "go", "")
 	if err != nil {
 		t.Fatalf("InsertFile repo_1 failed: %v", err)
 	}
 
 	// 2. Insert same file "main.go" under repo_2 (should succeed and return a new ID)
-	id2, err := s.InsertFile(ctx, "repo_2", "main.go", "go")
+	id2, err := s.InsertFile(ctx, "repo_2", "main.go", "go", "")
 	if err != nil {
 		t.Fatalf("InsertFile repo_2 failed: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestInsertFile_RepositoryScoping(t *testing.T) {
 	}
 
 	// 3. Re-insert file "main.go" under repo_1 (should handle conflict and return id1)
-	id1Retry, err := s.InsertFile(ctx, "repo_1", "main.go", "go")
+	id1Retry, err := s.InsertFile(ctx, "repo_1", "main.go", "go", "")
 	if err != nil {
 		t.Fatalf("Re-insert file repo_1 failed: %v", err)
 	}

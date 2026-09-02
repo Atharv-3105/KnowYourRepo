@@ -13,22 +13,20 @@ type File struct {
 }
 
 
-func(s *Store) InsertFile(ctx context.Context, repoID, path, language string) (int64, error) {
+func(s *Store) InsertFile(ctx context.Context, repoID, path, language, hash string) (int64, error) {
 	query := `
-	INSERT INTO files (repo_id, path, language)
-	VALUES  ($1, $2, $3)
-	ON CONFLICT(repo_id, path) DO UPDATE SET language = EXCLUDED.language
+	INSERT INTO files (repo_id, path, language, hash)
+	VALUES ($1, $2, $3, $4)
+	ON CONFLICT (repo_id, path) DO UPDATE SET language = EXCLUDED.language, hash = EXCLUDED.hash
 	RETURNING id
 	`
 
-	//By switching to Postgre we don't need to do the 2-step "insert then SELECT the existing ID on conflict"
-	//RETURNING ensures data is returned even when ON CONFLICT DO UPDATE
-	var id int64 
+	var id int64
 
-	err := s.db.QueryRowContext(ctx, query, repoID, path, language).Scan(&id)
+	err := s.db.QueryRowContext(ctx, query, repoID, path, language, hash).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert file: %w", err)
 	}
 
-	return id, nil 
+	return id, nil
 }

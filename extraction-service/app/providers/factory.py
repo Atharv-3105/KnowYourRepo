@@ -5,14 +5,19 @@ from app.providers.groq_provider import GroqProvider
 from app.providers.gemini_provider import GeminiProvider
 from app.providers.openai_compatible_provider import OpenAICompatibleProvider
 from app.providers.router import LLMRouter, RouterProvider
-
+from app.providers.voyage_provider import VoyageProvider
 
 def get_embed_provider() -> EmbedProvider:
     provider = settings.embed_provider
     if provider == "ollama":
         return OllamaProvider(model=settings.ollama_embed_model, base_url=settings.ollama_base_url)
+    if provider == "voyage":
+        return VoyageProvider(
+            api_key=settings.voyage_api_key,
+            model=settings.voyage_model,
+            dimension=settings.voyage_dimension,
+        )
     raise ValueError(f"Unsupported embed provider: {provider}")
-
 
 def get_llm_router() -> LLMRouter:
     """
