@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/atharva-3105/KnowYourRepo/internal/metrics"
 	"github.com/atharva-3105/KnowYourRepo/internal/retrieval"
 )
 
@@ -43,10 +44,12 @@ func(e *Executor) Execute(ctx context.Context, plan []ToolName, req ToolRequest)
 		result, err := tool.Execute(ctx, req)
 		if err != nil{
 			e.logger.Error("agent_tool_failed", "tool", name, "error", err)
-			continue 
+			metrics.AgentToolExecutionsTotal.WithLabelValues(string(name), "failed").Inc()
+			continue
 		}
 
 		e.logger.Info("agent_tool_completed", "tool", name, "results", len(result.Results))
+		metrics.AgentToolExecutionsTotal.WithLabelValues(string(name), "success").Inc()
 
 		for _, r := range result.Results {
 

@@ -1,4 +1,4 @@
-package sidecar 
+package sidecar
 
 import (
 	"bytes"
@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/atharva-3105/KnowYourRepo/internal/config"
 )
 
 type Client struct {
@@ -22,6 +24,12 @@ func NewClient(baseURL string) *Client{
 		httpClient: &http.Client{
 			Timeout: 10 * time.Minute,
 		},
+	}
+}
+
+func setRequestIDHeader(req *http.Request, ctx context.Context) {
+	if id :=  config.FromContext(ctx);id != "" {
+		req.Header.Set("X-Request-ID", id)
 	}
 }
 
@@ -47,6 +55,7 @@ func (c *Client) Embed(ctx context.Context,req EmbedBatchRequest,) error{
 
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	setRequestIDHeader(httpReq, ctx)
 
 	//Perform a POST request
 	resp, err := c.httpClient.Do(httpReq)
@@ -79,6 +88,7 @@ func (c *Client) Search(ctx context.Context, req SearchRequest) ([]SearchResult,
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	setRequestIDHeader(httpReq, ctx)
 
 	//Perform a POST request for Search
 	resp, err := c.httpClient.Do(httpReq)

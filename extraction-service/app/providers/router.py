@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from enum import Enum 
 from typing import Callable, Optional
 
+from app.metrics import LLM_ROUTER_REQUESTS_TOTAL, LLM_ROUTER_TOKENS_TOTAL
 from app.providers.base import LLMProvider
 from app.providers.errors import ProviderError
 
@@ -158,18 +159,23 @@ class LLMRouter:
                 async with self._lock:
                     provider.mark_used(tokens_used)
                     provider.mark_success()
-                    
-                return content 
-            
+
+                LLM_ROUTER_REQUESTS_TOTAL.labels(provider.name, "success").inc()
+                LLM_ROUTER_TOKENS_TOTAL.labels(provider.name).inc(tokens_used)
+
+                return content
+
             except ProviderError as e:
-                
+
                 #Mark the provider as ERROR
                 async with self._lock:
                     if e.rate_limited:
                         provider.mark_rate_limited(e.retry_after)
                     else:
                         provider.mark_error()
-                        
+
+                LLM_ROUTER_REQUESTS_TOTAL.labels(provider.name, "rate_limited" if e.rate_limited else "error").inc()
+
                 logger.warning(f"[ROUTER] provider = {provider.name} error = {e}")
                 
         raise ProviderError(f"[ROUTER] All LLM Providers exhausted for task = {task_type}. tried = {tried}")

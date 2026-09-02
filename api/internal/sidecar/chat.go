@@ -37,6 +37,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	setRequestIDHeader(httpReq, ctx)
 
 	resp, err := c.httpClient.Do(httpReq)
 

@@ -43,6 +43,7 @@ func (c *Client) Classify(ctx context.Context, req ClassifyRequest) (*ClassifyRe
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	setRequestIDHeader(httpReq, ctx)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil{

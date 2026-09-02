@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/config"
 	"github.com/atharva-3105/KnowYourRepo/internal/sidecar"
@@ -42,6 +43,8 @@ func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		sidecar: sidecarClient,
 	}
 
+	s.router.Use(RequestIDMiddleware(s.logger))
+	s.router.Use(MetricsMiddleware())
 	s.registerRoutes()
 	return s, nil
 }
@@ -51,6 +54,9 @@ func (s *Server) registerRoutes() {
 	
 	//Health Route
 	s.router.GET("/health", s.handleHealth)
+
+	//Prometheus metrics scrape endpoint
+	s.router.GET("/metrics", gin.WrapH(promhttp.Handler()))
 
 	//Repo ingestion route
 	repoHandler := NewRepoHandler(s.logger,s.store, s.sidecar)
@@ -74,6 +80,12 @@ func (s *Server) registerRoutes() {
 
 	//Agent-Based Chat Route
 	s.router.POST("/agent/chat", repoHandler.AgentChat)
+
+	//Ingestion job status Route
+	s.router.GET("/repos/jobs/:id", repoHandler.GetJobStatus)
+
+	//On-demand repo sync check
+	s.router.POST("/repos/:id/sync", repoHandler.SyncRepo)
 }
 
 func (s *Server) Start() error {

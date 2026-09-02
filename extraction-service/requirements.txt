@@ -12,3 +12,8 @@ google-genai>=0.3.0
 psycopg[binary]>=3.2
 psycopg-pool>=3.2
 pgvector>=0.3.6
+voyageai>=0.3.0
+prometheus-client>=0.20.0
+# Pinned below 7.0.0: newer versions require starlette>=1.0.0, which
+# conflicts with fastapi==0.115.0's starlette<0.39.0 requirement.
+prometheus-fastapi-instrumentator<7.0.0

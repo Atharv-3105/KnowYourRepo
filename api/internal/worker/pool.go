@@ -2,6 +2,8 @@ package worker
 import (
 	"context"
 	"log/slog"
+
+	"github.com/atharva-3105/KnowYourRepo/internal/metrics"
 )
 
 //Handler will process a single job identified by its ID. 
@@ -51,8 +53,10 @@ func(p *Pool) runWorker(ctx context.Context, workerID int) {
 			//Job's channel is close
 			if !ok {
 				p.logger.Info("worker_stopped", "worker_id", workerID, "reason", "channel_closes")
-				return 
+				return
 			}
+
+			metrics.WorkerPoolQueueDepth.Set(float64(len(p.jobs)))
 
 			p.logger.Info("worker_job_started", "worker_id", workerID, "job_id", jobID)
 
@@ -72,9 +76,10 @@ func(p *Pool)Enqueue(jobID string) bool {
 
 	select{
 	case p.jobs <- jobID:
-		return true 
+		metrics.WorkerPoolQueueDepth.Set(float64(len(p.jobs)))
+		return true
 	default:
-		return false 
+		return false
 	}
 }
 

@@ -36,6 +36,7 @@ func (c *Client) DeleteEmbeddings(ctx context.Context, req DeleteEmbeddingsReque
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
+	setRequestIDHeader(httpReq, ctx)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
