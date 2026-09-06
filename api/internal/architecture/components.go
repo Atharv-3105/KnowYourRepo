@@ -20,7 +20,9 @@ func DetectComponents(files []store.ArchitectureFile, symbols []store.Architectu
 		fileMap[f.ID] = f
 	}
 
-	var components []Component
+	// Same reasoning as DetectEntrypoints: non-nil so this marshals to `[]`,
+	// not JSON `null`, when no components are detected.
+	components := []Component{}
 
 	for _, sym := range symbols {
 

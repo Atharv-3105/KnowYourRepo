@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/rag"
+	"github.com/atharva-3105/KnowYourRepo/internal/retrieval"
 )
 
 // RepoSyncer lets the agent trigger a background re-ingestion check
@@ -41,7 +42,12 @@ func NewService(planner *HybridPlanner, executor *Executor, ragService *rag.Serv
 // re-ingestion check is triggered (fire-and-forget - the answer is still
 // built from whatever's currently indexed; refreshing reports true so the
 // caller can tell the user this answer might be slightly stale).
-func (s *Service) Answer(ctx context.Context, repoID, query, history string) (answer string, plan []ToolName, refreshing bool, err error) {
+//
+// The merged retrieval results are also returned (not just the final answer
+// string) so the caller can surface them as structured citations - these are
+// exactly the results that were fed into the LLM prompt for this answer, not
+// a second, potentially different retrieval pass.
+func (s *Service) Answer(ctx context.Context, repoID, query, history string) (answer string, plan []ToolName, refreshing bool, sources []retrieval.RetrievalResult, err error) {
 
 	s.logger.Info("agent_service_started", "repo_id", repoID, "query", query)
 
@@ -65,12 +71,12 @@ func (s *Service) Answer(ctx context.Context, repoID, query, history string) (an
 	answer, err = s.ragService.AnswerQuestion(ctx, query, history, results)
 	if err != nil {
 		s.logger.Error("agent_service_failed", "repo_id", repoID, "error", err)
-		return "", plan, refreshing, err
+		return "", plan, refreshing, nil, err
 	}
 
 	s.logger.Info("agent_service_completed", "repo_id", repoID)
 
-	return answer, plan, refreshing, nil
+	return answer, plan, refreshing, results, nil
 }
 
 func (s *Service) triggerBackgroundSync(repoID string) {

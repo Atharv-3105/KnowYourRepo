@@ -61,3 +61,9 @@ ALTER TABLE files ADD COLUMN IF NOT EXISTS hash TEXT;
 
 ALTER TABLE symbols DROP CONSTRAINT IF EXISTS symbols_file_id_fkey;
 ALTER TABLE symbols ADD CONSTRAINT symbols_file_id_fkey FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE;
+
+-- call_edges had no indexes at all; the bounded call-graph traversal (Phase 5 Brick 3)
+-- filters by repo_id and joins repeatedly on caller_symbol/callee_symbol per recursion
+-- step, which would otherwise be a full table scan on every hop.
+CREATE INDEX IF NOT EXISTS idx_call_edges_repo_caller ON call_edges(repo_id, caller_symbol);
+CREATE INDEX IF NOT EXISTS idx_call_edges_repo_callee ON call_edges(repo_id, callee_symbol);

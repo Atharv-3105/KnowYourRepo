@@ -43,6 +43,7 @@ func NewServer(cfg *config.Config, logger *slog.Logger) (*Server, error) {
 		sidecar: sidecarClient,
 	}
 
+	s.router.Use(CORSMiddleware(cfg.CORS.AllowedOrigins))
 	s.router.Use(RequestIDMiddleware(s.logger))
 	s.router.Use(MetricsMiddleware())
 	s.registerRoutes()
@@ -63,8 +64,14 @@ func (s *Server) registerRoutes() {
 
 	s.router.POST("/repos", repoHandler.CreateRepo)
 
-	//Graph Extraction Route
+	//List ingested repositories
+	s.router.GET("/repos", repoHandler.ListRepos)
+
+	//Graph Extraction Route (legacy, unscoped across all repos - kept for backward compat)
 	s.router.GET("/graph", repoHandler.GetCallGraph)
+
+	//Bounded, repo-scoped, symbol-anchored call graph
+	s.router.GET("/graph/:repoID", repoHandler.GetBoundedCallGraph)
 
 	//Call-Graph Context Route []
 	// s.router.GET("/graph/context/:symbol", repoHandler.ExpandSymbolContext)

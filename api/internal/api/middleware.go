@@ -4,11 +4,43 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
+	"net/http"
+	"strings"
 	"github.com/gin-gonic/gin"
 	"github.com/atharva-3105/KnowYourRepo/internal/config"
 )
 
 const RequestIDHeader = "X-Request-ID"
+
+// CORSMiddleware allows only the configured frontend origins to call this API from a browser,
+// and short-circuits preflight OPTIONS requests before they reach any route handler.
+func CORSMiddleware(allowedOrigins []string) gin.HandlerFunc {
+
+	originSet := make(map[string]struct{}, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		originSet[strings.TrimSpace(o)] = struct{}{}
+	}
+
+	return func(c *gin.Context) {
+
+		origin := c.GetHeader("Origin")
+
+		if _, ok := originSet[origin]; ok {
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+			c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID")
+			c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
+		}
+
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+
+		c.Next()
+	}
+}
 
 //Function ensures every request has a request ID(reusing one supplied by the caller if present)
 //The reqID is stored on the request context so it can propagate to the sidecar

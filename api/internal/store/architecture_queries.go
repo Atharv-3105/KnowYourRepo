@@ -153,8 +153,11 @@ func(s *Store) GetLanguages(ctx context.Context, repoID string) ([]string, error
 
 	defer rows.Close()
 
-	var languages []string 
-	
+	// Non-nil so a repo with zero files (e.g. a README-only repo) still
+	// marshals this as `[]` in JSON, not `null` - see the same fix in
+	// architecture.DetectEntrypoints/DetectComponents.
+	languages := []string{}
+
 	for rows.Next() {
 
 		var lang string 

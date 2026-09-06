@@ -16,7 +16,10 @@ func DetectEntrypoints(files []store.ArchitectureFile, symbols []store.Architect
 		fileMap[f.ID] = f
 	}
 
-	var entrypoints []EntryPoint
+	// Initialized non-nil, not `var entrypoints []EntryPoint` - a nil slice
+	// marshals to JSON `null`, not `[]`, which breaks any client that
+	// assumes an array (e.g. `data.entrypoints.length` in the frontend).
+	entrypoints := []EntryPoint{}
 
 	for _, symbol := range symbols {
 

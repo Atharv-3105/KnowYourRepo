@@ -3,25 +3,31 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
-	Server ServerConfig 
+	Server ServerConfig
 	Extractor ExtractorConfig
 	DB 		DBConfig
+	CORS    CORSConfig
 }
 
 type ServerConfig struct {
-	Host   string 
-	Port   string 
+	Host   string
+	Port   string
 }
 
 type ExtractorConfig struct {
-	BaseURL  string 
+	BaseURL  string
 }
 
 type DBConfig struct {
-	DSN   string 
+	DSN   string
+}
+
+type CORSConfig struct {
+	AllowedOrigins []string
 }
 
 func (s ServerConfig) Addr() string {
@@ -40,6 +46,9 @@ func Load() (*Config, error) {
 		},
 		DB:  DBConfig{
 			DSN:   getEnv("DATABASE_URL", "postgres://postgres:atharva@localhost:5432/knowyourrepo?sslmode=disable"),
+		},
+		CORS: CORSConfig{
+			AllowedOrigins: strings.Split(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173"), ","),
 		},
 	}
 	return cfg, nil
