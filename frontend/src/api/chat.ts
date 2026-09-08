@@ -1,7 +1,8 @@
 import { api } from "./client";
 import type { AgentChatRequest, AgentChatResponse } from "./types";
 
-// Only the agentic endpoint is wrapped - plain POST /chat has no tools_used/
-// sources and nothing in the frontend plan (Bricks 6-10) uses it.
+// POST /chat now runs the single answer.Service retrieval path (see
+// docs/superpowers/specs/2026-09-07-agent-tool-simplification-design.md) -
+// the old separate /agent/chat endpoint no longer exists.
 export const agentChat = (req: AgentChatRequest) =>
-  api.post<AgentChatResponse>("/agent/chat", req);
+  api.post<AgentChatResponse>("/chat", req);
