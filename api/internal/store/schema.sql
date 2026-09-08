@@ -67,3 +67,8 @@ ALTER TABLE symbols ADD CONSTRAINT symbols_file_id_fkey FOREIGN KEY (file_id) RE
 -- step, which would otherwise be a full table scan on every hop.
 CREATE INDEX IF NOT EXISTS idx_call_edges_repo_caller ON call_edges(repo_id, caller_symbol);
 CREATE INDEX IF NOT EXISTS idx_call_edges_repo_callee ON call_edges(repo_id, callee_symbol);
+
+-- Real ingestion sub-stage (cloning/walking/parsing/embedding/done), set by
+-- ingestRepository at each actual phase transition - NULL while a job is
+-- still queued, not yet picked up by a worker.
+ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS stage TEXT;

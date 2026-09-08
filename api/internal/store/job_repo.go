@@ -8,9 +8,10 @@ import(
 
 type IngestionJob  struct {
 	ID			string
-	RepoURL		string 
-	Status 		string 
-	ErrorMessage	*string 
+	RepoURL		string
+	Status 		string
+	ErrorMessage	*string
+	Stage		*string
 }
 
 const (
@@ -18,6 +19,18 @@ const (
 	JobStatusProcessing = "processing"
 	JobStatusCompleted = "completed"
 	JobStatusFailed = "failed"
+)
+
+// Stage values mirror the real, sequential phases ingestRepository actually
+// runs through (repos.go) - not invented UI steps. A job's stage is NULL
+// until the worker picks it up and sets StageCloning; it stays NULL for a
+// job that's still sitting in the queue.
+const (
+	StageCloning   = "cloning"
+	StageWalking   = "walking"
+	StageParsing   = "parsing"
+	StageEmbedding = "embedding"
+	StageDone      = "done"
 )
 
 //Function to insert a Job into DB
@@ -61,17 +74,35 @@ func(s *Store) UpdateJobStatus(ctx context.Context, jobID, status string, errMsg
 
 func(s *Store) GetJob(ctx context.Context, jobID string) (*IngestionJob, error){
 	query := `
-	SELECT id, repo_url, status, error_message
+	SELECT id, repo_url, status, error_message, stage
 	FROM ingestion_jobs
 	WHERE id = $1
 	`
 
 	var job IngestionJob
 
-	err := s.db.QueryRowContext(ctx, query, jobID).Scan(&job.ID, &job.RepoURL, &job.Status, &job.ErrorMessage)
+	err := s.db.QueryRowContext(ctx, query, jobID).Scan(&job.ID, &job.RepoURL, &job.Status, &job.ErrorMessage, &job.Stage)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingestion job: %w", err)
 	}
 
-	return &job, nil 
+	return &job, nil
+}
+
+// UpdateJobStage records which real phase of the ingestion pipeline a job
+// is currently in (see the Stage* constants above) - called from
+// ingestRepository at each actual phase transition, not synthesized.
+func(s *Store) UpdateJobStage(ctx context.Context, jobID, stage string) error {
+	query := `
+	UPDATE ingestion_jobs
+	SET stage = $1, updated_at = now()
+	WHERE id = $2
+	`
+
+	_, err := s.db.ExecContext(ctx, query, stage, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to update ingestion job stage: %w", err)
+	}
+
+	return nil
 }

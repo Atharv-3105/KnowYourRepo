@@ -227,6 +227,10 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		h.logger.Error("failed to mark job processing", "job_id", jobID, "error", err)
 	}
 
+	if err := h.store.UpdateJobStage(ctx, jobID, store.StageCloning); err != nil {
+		h.logger.Error("failed to mark job stage cloning", "job_id", jobID, "error", err)
+	}
+
 	repoID := jobID
 	repoURL := job.RepoURL
 
@@ -255,6 +259,10 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		h.logger.Error("failed to record repo sync state", "error", err)
 	}
 
+	if err := h.store.UpdateJobStage(ctx, jobID, store.StageWalking); err != nil {
+		h.logger.Error("failed to mark job stage walking", "job_id", jobID, "error", err)
+	}
+
 	//Get the files of the Repository
 	files, err := h.walker.WalkRepo(ctx, repoDir)
 	if err != nil {
@@ -277,6 +285,10 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 	seenPaths := make(map[string]bool)
 
 	var skipped, processed int
+
+	if err := h.store.UpdateJobStage(ctx, jobID, store.StageParsing); err != nil {
+		h.logger.Error("failed to mark job stage parsing", "job_id", jobID, "error", err)
+	}
 
 	//Process the files
 	for _, file := range files {
@@ -337,6 +349,10 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 
 	h.logger.Info("incremental_diff_complete", "processed", processed, "skipped", skipped, "deleted", len(existing)-len(seenPaths))
 
+	if err := h.store.UpdateJobStage(ctx, jobID, store.StageEmbedding); err != nil {
+		h.logger.Error("failed to mark job stage embedding", "job_id", jobID, "error", err)
+	}
+
 	if len(embedItems) > 0 {
 
 		h.logger.Info("sending batch embeddings", "count", len(embedItems))
@@ -351,6 +367,10 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 
 	if err := representation.SaveRepository(repoIR, irPath); err != nil {
 		h.logger.Error("failed to save repository IR", "error", err)
+	}
+
+	if err := h.store.UpdateJobStage(ctx, jobID, store.StageDone); err != nil {
+		h.logger.Error("failed to mark job stage done", "job_id", jobID, "error", err)
 	}
 
 	h.logger.Info("repo ingestion complete", "repo_id", repoID)

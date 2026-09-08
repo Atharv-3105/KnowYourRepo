@@ -93,6 +93,12 @@ func (s *Server) registerRoutes() {
 
 	//On-demand repo sync check
 	s.router.POST("/repos/:id/sync", repoHandler.SyncRepo)
+
+	//Raw file content, served from the repo's on-disk clone
+	s.router.GET("/files/:repoID", repoHandler.GetFileContent)
+
+	//Full, searchable symbol index for a repo
+	s.router.GET("/symbols/:repoID", repoHandler.ListSymbols)
 }
 
 func (s *Server) Start() error {
