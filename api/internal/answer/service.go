@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/architecture"
+	"github.com/atharva-3105/KnowYourRepo/internal/metrics"
 	"github.com/atharva-3105/KnowYourRepo/internal/rag"
 	"github.com/atharva-3105/KnowYourRepo/internal/retrieval"
 )
@@ -74,16 +75,20 @@ func (s *Service) Answer(ctx context.Context, repoID, query, history string) (an
 
 	results, err = s.retriever.Search(ctx, repoID, query)
 	if err != nil {
+		metrics.AgentToolExecutionsTotal.WithLabelValues("semantic", "failed").Inc()
 		s.logger.Error("answer_service_search_failed", "repo_id", repoID, "error", err)
 		return "", refreshing, nil, err
 	}
+	metrics.AgentToolExecutionsTotal.WithLabelValues("semantic", "success").Inc()
 
 	if WantsArchitectureOverview(query) {
 		if overview, ovErr := s.architectureService.BuildSummary(ctx, repoID); ovErr != nil {
 			// Not fatal - a request that already has real semantic results
 			// shouldn't fail over a missed architecture overview.
+			metrics.AgentToolExecutionsTotal.WithLabelValues("architecture", "failed").Inc()
 			s.logger.Warn("answer_service_architecture_overview_failed", "repo_id", repoID, "error", ovErr)
 		} else {
+			metrics.AgentToolExecutionsTotal.WithLabelValues("architecture", "success").Inc()
 			results = append(results, overviewAsResult(repoID, overview))
 		}
 	}
