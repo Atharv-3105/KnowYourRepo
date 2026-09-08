@@ -5,10 +5,10 @@ global:
 scrape_configs:
   - job_name: "knowyourrepo-go-api"
     static_configs:
-      - targets: ["host.docker.internal:8080"]
+      - targets: ["api:8080"]
     metrics_path: /metrics
 
   - job_name: "knowyourrepo-python-sidecar"
     static_configs:
-      - targets: ["host.docker.internal:8000"]
+      - targets: ["extraction-service:8000"]
     metrics_path: /metrics
