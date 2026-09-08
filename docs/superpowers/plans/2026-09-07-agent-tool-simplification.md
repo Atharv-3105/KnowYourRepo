@@ -355,7 +355,7 @@ func TestService_Answer_TriggersBackgroundSyncOnFreshnessQuestion(t *testing.T) 
 	svc, dbStore := newTestService(t, server.URL, sync)
 	defer dbStore.Close()
 
-	answer, refreshing, _, err := svc.Answer(ctx, "repo_answer_3", "what changed recently?", "")
+	answer, refreshing, _, err := svc.Answer(ctx, "repo_answer_3", "has this changed recently?", "")
 	if err != nil {
 		t.Fatalf("Answer failed: %v", err)
 	}
