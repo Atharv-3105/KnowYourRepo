@@ -16,9 +16,8 @@ logger = logging.getLogger(__name__)
 
 TASK_PROVIDER_ORDER: dict[str, list[str]] = {
     "answer" : ["groq", "gemini", "cerebras", "openrouter"],
-    "classify": ["groq", "gemini", "cerebras", "openrouter"],
     "default": ["groq", "gemini", "cerebras", "openrouter"],
-} 
+}
 
 ERROR_RECOVERY_SECONDS = 300
 CONSECUTIVE_ERRORS = 3
