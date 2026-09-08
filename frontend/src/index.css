@@ -1,35 +1,58 @@
-@import "@fontsource/ibm-plex-sans/400.css";
-@import "@fontsource/ibm-plex-sans/500.css";
-@import "@fontsource/ibm-plex-sans/600.css";
-@import "@fontsource/ibm-plex-sans/700.css";
-@import "@fontsource/ibm-plex-mono/400.css";
-@import "@fontsource/ibm-plex-mono/500.css";
+@import "@fontsource/public-sans/400.css";
+@import "@fontsource/public-sans/500.css";
+@import "@fontsource/public-sans/600.css";
+@import "@fontsource/public-sans/700.css";
+@import "@fontsource/fraunces/500.css";
+@import "@fontsource/fraunces/600.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
 
 @import "tailwindcss";
 
 /*
-  Blueprint palette: deep cyanotype-blue paper, pale drawn-line text,
-  one warm amber "grease pencil" accent for the single interactive signal.
-  Sourced from the subject matter (Architecture/Graph are literal
-  diagrams) rather than a generic dark-mode-plus-neon default.
+  Field Notes palette: crisp editorial paper (deliberately not the cliché
+  warm cream #F4F1EA), ink-charcoal text, and dedicated per-tool accent
+  hues - because which capability answered a question (semantic search,
+  graph traversal, architecture summary) is real information this product
+  wants legible at a glance, not decoration. The primary interactive
+  --color-accent reuses the "semantic" tool's blue rather than inventing a
+  fourth hue: semantic search is literally this product's default/fallback
+  tool (see the Go Planner's Plan() - it's the tool selected whenever no
+  other one matches), so it doubling as "the" interactive color is a
+  specific choice grounded in the product's own logic, not arbitrary.
+
+  Token roles are renamed from the previous (blueprint) palette to match
+  what they now represent - --color-line held body text in the blueprint
+  metaphor (pale "drawn-line" text), which would read as a confusing name
+  for ink/text going forward. --color-ink/-dim/-faint name the same three
+  text-weight roles honestly for the document metaphor Field Notes uses.
 */
 @theme {
-  --color-paper: #1b3a5c;
-  --color-paper-deep: #12294a;
-  --color-line: #eaf2f8;
-  --color-line-dim: #8fafc7;
-  --color-line-faint: #3d5975;
-  --color-accent: #f2a65a;
-  --color-accent-dim: #b97d3f;
-  --color-danger: #e8735a;
+  --color-page: #fafaf8;
+  --color-page-deep: #f1f0eb;
+  --color-line: #dedbd2;
 
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-ink: #1a1d24;
+  --color-ink-dim: #6b6f7a;
+  --color-ink-faint: #9a9d9d;
+
+  --color-accent: #3b6fd9;
+  --color-accent-dim: #2a52a8;
+
+  --color-tool-graph: #b5502c;
+  --color-tool-architecture: #5c7a3a;
+
+  --color-danger: #c23b2e;
+  --color-success: #2f8558;
+
+  --font-sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 body {
-  background: var(--color-paper);
-  color: var(--color-line);
+  background: var(--color-page);
+  color: var(--color-ink);
   font-family: var(--font-sans);
 }
 

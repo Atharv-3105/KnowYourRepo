@@ -33,7 +33,7 @@ export default function CopyableLocation({ filePath, startLine, endLine }: Copya
       type="button"
       onClick={handleClick}
       title="Copy path"
-      className="border border-line-faint px-1.5 py-0.5 font-mono text-xs text-line-dim transition-colors hover:border-accent hover:text-line"
+      className="border border-line-faint px-1.5 py-0.5 font-mono text-xs text-ink-dim transition-colors hover:border-accent hover:text-ink"
     >
       {copied ? "copied" : label}
     </button>

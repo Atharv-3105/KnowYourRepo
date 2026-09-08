@@ -1,9 +1,13 @@
 import { useMutation } from "@tanstack/react-query";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { agentChat, ApiError } from "../api";
 import type { Source } from "../api";
 import CopyableLocation from "../components/CopyableLocation";
+import OpenInCodeView from "../components/OpenInCodeView";
+import { duration, easeOut, settleUp } from "../lib/motion";
+import { toolBadgeClasses } from "../lib/toolColor";
 
 interface Message {
   role: "user" | "assistant";
@@ -78,95 +82,147 @@ export default function Chat() {
     chatMutation.mutate(trimmed);
   };
 
+  const jumpTo = (i: number) => {
+    document.getElementById(`msg-${i}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const questionIndices = messages
+    .map((m, i) => ({ ...m, i }))
+    .filter((m) => m.role === "user");
+
   return (
-    <div className="flex flex-col">
-      <div className="space-y-3">
-        {messages.length === 0 && (
-          <p className="text-sm text-line-faint">Ask a question about this repository.</p>
+    <div className="flex gap-8">
+      <aside className="sticky top-8 hidden w-56 shrink-0 self-start md:block">
+        <div className="mb-2 text-xs text-ink-dim">Questions asked</div>
+        {questionIndices.length === 0 ? (
+          <p className="text-xs text-ink-faint">None yet.</p>
+        ) : (
+          <ul className="space-y-2 border-t border-line-faint pt-2">
+            {questionIndices.map((m) => (
+              <li key={m.i}>
+                <button
+                  type="button"
+                  onClick={() => jumpTo(m.i)}
+                  className="line-clamp-2 text-left text-xs text-ink-dim hover:text-ink"
+                >
+                  {m.content}
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
+      </aside>
 
-        {messages.map((m, i) => (
-          <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
-            <div
-              className={`max-w-[85%] border-y px-4 py-3 text-sm ${
-                m.role === "user"
-                  ? "border-y-transparent border-r-2 border-r-accent bg-paper-deep"
-                  : "border-y-transparent border-l-2 border-l-line-faint bg-paper-deep"
-              }`}
+      <div className="min-w-0 flex-1">
+        <div className="space-y-3">
+          {messages.length === 0 && (
+            <p className="text-sm text-ink-faint">Ask a question about this repository.</p>
+          )}
+
+          {messages.map((m, i) => (
+            <motion.div
+              key={i}
+              id={`msg-${i}`}
+              initial={settleUp.initial}
+              animate={settleUp.animate}
+              transition={settleUp.transition}
+              className={m.role === "user" ? "flex justify-end" : "flex justify-start"}
             >
-              {m.role === "assistant" && m.refreshing && (
-                <div className="mb-1.5 text-xs text-accent">
-                  Refreshing in the background - this answer may be slightly stale.
-                </div>
-              )}
+              <div
+                className={`max-w-[85%] border-y px-4 py-3 text-sm ${
+                  m.role === "user"
+                    ? "border-y-transparent border-r-2 border-r-accent bg-page-deep"
+                    : "border-y-transparent border-l-2 border-l-line-faint bg-page-deep"
+                }`}
+              >
+                {m.role === "assistant" && m.refreshing && (
+                  <div className="mb-1.5 text-xs text-accent">
+                    Refreshing in the background - this answer may be slightly stale.
+                  </div>
+                )}
 
-              <div className="whitespace-pre-wrap text-line">{m.content}</div>
+                <div className="whitespace-pre-wrap text-ink">{m.content}</div>
 
-              {m.role === "assistant" && m.toolsUsed && m.toolsUsed.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {m.toolsUsed.map((tool) => (
-                    <span key={tool} className="border border-line-faint px-1.5 py-0.5 font-mono text-xs text-line-dim">
-                      {tool}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {m.role === "assistant" && m.sources && m.sources.length > 0 && (
-                <div className="mt-3 border-t border-line-faint pt-2">
-                  <div className="mb-1.5 text-xs text-line-dim">Sources</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {m.sources.map((s, si) => (
-                      <span key={si} className="inline-flex items-center gap-1">
-                        <CopyableLocation
-                          filePath={s.file_path}
-                          startLine={s.start_line}
-                          endLine={s.end_line}
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            navigate(`/repos/${repoId}/graph?symbol=${encodeURIComponent(s.symbol)}`)
-                          }
-                          className="border border-line-faint px-1.5 py-0.5 text-xs text-line-dim transition-colors hover:border-accent hover:text-line"
-                        >
-                          view in graph
-                        </button>
+                {m.role === "assistant" && m.toolsUsed && m.toolsUsed.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {m.toolsUsed.map((tool) => (
+                      <span
+                        key={tool}
+                        className={`border px-1.5 py-0.5 font-mono text-xs ${toolBadgeClasses(tool)}`}
+                      >
+                        {tool}
                       </span>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </div>
-        ))}
+                )}
 
-        {chatMutation.isPending && <p className="text-sm text-line-dim">Thinking&hellip;</p>}
+                {m.role === "assistant" && m.sources && m.sources.length > 0 && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    transition={{ duration: duration.base, ease: easeOut }}
+                    className="mt-3 overflow-hidden border-t border-line-faint pt-2"
+                  >
+                    <div className="mb-1.5 text-xs text-ink-dim">Sources</div>
+                    <ol className="space-y-1.5">
+                      {m.sources.map((s, si) => (
+                        <li key={si} className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-mono text-xs text-ink-faint">
+                            {String(si + 1).padStart(2, "0")}
+                          </span>
+                          <span className="font-mono text-xs text-ink">{s.symbol}</span>
+                          <CopyableLocation filePath={s.file_path} startLine={s.start_line} endLine={s.end_line} />
+                          <OpenInCodeView
+                            repoId={repoId!}
+                            filePath={s.file_path}
+                            startLine={s.start_line}
+                            endLine={s.end_line}
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              navigate(`/repos/${repoId}/graph?symbol=${encodeURIComponent(s.symbol)}`)
+                            }
+                            className="border border-line-faint px-1.5 py-0.5 text-xs text-ink-dim transition-colors hover:border-accent hover:text-ink"
+                          >
+                            view in graph
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  </motion.div>
+                )}
+              </div>
+            </motion.div>
+          ))}
+
+          {chatMutation.isPending && <p className="text-sm text-ink-dim">Thinking&hellip;</p>}
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-6 flex border border-line-faint">
+          <input
+            type="text"
+            required
+            placeholder="Ask a question..."
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            disabled={chatMutation.isPending}
+            className="flex-1 bg-page-deep px-4 py-2.5 text-sm text-ink placeholder:text-ink-dim outline-none disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={chatMutation.isPending}
+            className="border-l border-line-faint bg-accent px-5 py-2.5 text-sm font-medium text-page-deep transition-colors hover:bg-accent-dim disabled:opacity-50"
+          >
+            Send
+          </button>
+        </form>
+
+        <p className="mt-2 text-xs text-ink-faint">
+          Kept in memory on the server only - it won't survive a backend restart, and this
+          transcript won't survive a page reload either.
+        </p>
       </div>
-
-      <form onSubmit={handleSubmit} className="mt-6 flex border border-line-faint">
-        <input
-          type="text"
-          required
-          placeholder="Ask a question..."
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          disabled={chatMutation.isPending}
-          className="flex-1 bg-paper-deep px-4 py-2.5 text-sm text-line placeholder:text-line-dim outline-none disabled:opacity-50"
-        />
-        <button
-          type="submit"
-          disabled={chatMutation.isPending}
-          className="border-l border-line-faint bg-accent px-5 py-2.5 text-sm font-medium text-paper-deep transition-colors hover:bg-accent-dim disabled:opacity-50"
-        >
-          Send
-        </button>
-      </form>
-
-      <p className="mt-2 text-xs text-line-faint">
-        Kept in memory on the server only - it won't survive a backend restart, and this
-        transcript won't survive a page reload either.
-      </p>
     </div>
   );
 }
