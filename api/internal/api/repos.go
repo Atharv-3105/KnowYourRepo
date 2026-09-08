@@ -10,8 +10,7 @@ import (
 
 	"path/filepath"
 
-	"github.com/atharva-3105/KnowYourRepo/internal/agent"
-	"github.com/atharva-3105/KnowYourRepo/internal/agent/tools"
+	"github.com/atharva-3105/KnowYourRepo/internal/answer"
 	"github.com/atharva-3105/KnowYourRepo/internal/architecture"
 	"github.com/atharva-3105/KnowYourRepo/internal/chat"
 	"github.com/atharva-3105/KnowYourRepo/internal/chunk"
@@ -46,7 +45,7 @@ type RepoHandler struct {
 	ragService          *rag.Service
 	chatStore           *chat.Store
 	architectureService *architecture.Service
-	agentService        *agent.Service
+	answerService       *answer.Service
 	workerPool          *worker.Pool
 }
 
@@ -63,17 +62,6 @@ func NewRepoHandler(
 	hybridRetriever := retrieval.NewHybridRetriever(store, sidecar, logger)
 	ragService := rag.NewService(builder, sidecar, logger)
 
-	agentTools := map[agent.ToolName]agent.Tool{
-		agent.ToolSemantic:     tools.NewSemanticTool(hybridRetriever),
-		agent.ToolGraph:        tools.NewGraphTool(store),
-		agent.ToolMemory:       tools.NewMemoryTool(),
-		agent.ToolArchitecture: tools.NewArchitectureTool(architectureService),
-	}
-
-	fallbackPlanner := agent.NewPlanner()
-	hybridPlanner := agent.NewHybridPlanner(sidecar, fallbackPlanner, logger)
-	executor := agent.NewExecutor(agentTools, logger)
-
 	h := &RepoHandler{
 		logger:              logger,
 		store:               store,
@@ -89,10 +77,10 @@ func NewRepoHandler(
 		architectureService: architectureService,
 	}
 
-	// agentService needs h as its RepoSyncer (for freshness-triggered
+	// answerService needs h as its RepoSyncer (for freshness-triggered
 	// background sync), so it's constructed after h exists - same
 	// deferred-wiring pattern as workerPool below.
-	h.agentService = agent.NewService(hybridPlanner, executor, ragService, h, logger)
+	h.answerService = answer.NewService(hybridRetriever, architectureService, ragService, h, logger)
 
 	workerPool := worker.NewPool(IngestionWorkerCount, IngestionQueueSize, h.handleIngestionJob, logger)
 	workerPool.Start(context.Background())
@@ -550,10 +538,10 @@ func (h *RepoHandler) SyncRepo(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"status": "sync_queued", "repo_id": repo.ID})
 }
 
-// SyncIfStale implements agent.RepoSyncer - looks up the repo's URL and
+// SyncIfStale implements answer.RepoSyncer - looks up the repo's URL and
 // runs the same cheap staleness check + background enqueue used by the
-// on-demand /repos/:id/sync endpoint. Called by the agent when a chat
-// question implies the user wants the repo's latest state.
+// on-demand /repos/:id/sync endpoint. Called by the answer service when a
+// chat question implies the user wants the repo's latest state.
 func (h *RepoHandler) SyncIfStale(ctx context.Context, repoID string) error {
 
 	repo, err := h.store.GetRepositoryByID(ctx, repoID)

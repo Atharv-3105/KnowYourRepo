@@ -34,6 +34,9 @@ func buildSources(results []retrieval.RetrievalResult) []Source {
 	sources := make([]Source, 0, len(results))
 
 	for _, r := range results {
+		if r.Symbol == "architecture_overview" {
+			continue
+		}
 
 		sources = append(sources, Source{
 			Symbol:    r.Symbol,
@@ -67,7 +70,7 @@ func metadataInt(metadata map[string]interface{}, key string) int {
 	}
 }
 
-func (h *RepoHandler) AgentChat(c *gin.Context) {
+func (h *RepoHandler) Chat(c *gin.Context) {
 
 	var req ChatRequest
 
@@ -79,11 +82,11 @@ func (h *RepoHandler) AgentChat(c *gin.Context) {
 	history := h.chatStore.RecentMessages(req.SessionID, 6)
 	conversationContext := chat.BuildConversationContext(history)
 
-	h.logger.Info("agent_conversation_loaded", "session_id", req.SessionID, "messages", len(history))
+	h.logger.Info("chat_conversation_loaded", "session_id", req.SessionID, "messages", len(history))
 
 	h.chatStore.AddMessage(req.SessionID, "user", req.Question)
 
-	answer, plan, refreshing, results, err := h.agentService.Answer(
+	answer, refreshing, results, err := h.answerService.Answer(
 		c.Request.Context(),
 		req.RepoID,
 		req.Question,
@@ -96,17 +99,27 @@ func (h *RepoHandler) AgentChat(c *gin.Context) {
 	}
 
 	h.chatStore.AddMessage(req.SessionID, "assistant", answer)
-	h.logger.Info("agent_chat_message_saved", "session_id", req.SessionID, "role", "assistant")
-
-	toolNames := make([]string, 0, len(plan))
-	for _, t := range plan {
-		toolNames = append(toolNames, string(t))
-	}
+	h.logger.Info("chat_message_saved", "session_id", req.SessionID, "role", "assistant")
 
 	c.JSON(http.StatusOK, AgentChatResponse{
 		Answer:     answer,
-		Tools:      toolNames,
+		Tools:      toolsUsed(results),
 		Refreshing: refreshing,
 		Sources:    buildSources(results),
 	})
+}
+
+// toolsUsed reports which retrieval capabilities actually contributed to
+// this answer, for the frontend's per-tool citation badges (Brick 25).
+// "semantic" always ran; "architecture" only shows up if an overview
+// result was actually appended.
+func toolsUsed(results []retrieval.RetrievalResult) []string {
+	tools := []string{"semantic"}
+	for _, r := range results {
+		if r.Symbol == "architecture_overview" {
+			tools = append(tools, "architecture")
+			break
+		}
+	}
+	return tools
 }

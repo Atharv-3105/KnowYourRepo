@@ -85,9 +85,6 @@ func (s *Server) registerRoutes() {
 	//Architecture Route
 	s.router.GET("/architecture/:repoID", repoHandler.GetArchitecture)
 
-	//Agent-Based Chat Route
-	s.router.POST("/agent/chat", repoHandler.AgentChat)
-
 	//Ingestion job status Route
 	s.router.GET("/repos/jobs/:id", repoHandler.GetJobStatus)
 
