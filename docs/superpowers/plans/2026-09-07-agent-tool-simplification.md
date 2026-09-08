@@ -663,7 +663,7 @@ func (h *RepoHandler) Chat(c *gin.Context) {
 
 	c.JSON(http.StatusOK, AgentChatResponse{
 		Answer:     answer,
-		Tools:      toolsUsed(req.Question, results),
+		Tools:      toolsUsed(results),
 		Refreshing: refreshing,
 		Sources:    buildSources(results),
 	})
@@ -673,7 +673,7 @@ func (h *RepoHandler) Chat(c *gin.Context) {
 // this answer, for the frontend's per-tool citation badges (Brick 25).
 // "semantic" always ran; "architecture" only shows up if an overview
 // result was actually appended.
-func toolsUsed(query string, results []retrieval.RetrievalResult) []string {
+func toolsUsed(results []retrieval.RetrievalResult) []string {
 	tools := []string{"semantic"}
 	for _, r := range results {
 		if r.Symbol == "architecture_overview" {
@@ -728,7 +728,7 @@ with a single:
 	s.router.POST("/chat", repoHandler.Chat)
 ```
 
-(Both lines referenced the same handler name `Chat` before this change on different underlying functions — after this edit there is exactly one `Chat` method and exactly one route pointing to it.)
+(Before this task, `POST /chat` routed to the old `Chat` handler in `chat.go` and `POST /agent/chat` routed to the separate `AgentChat` handler in `agent_chat.go`. Step 2 deleted the old `Chat` handler and renamed `AgentChat`'s logic into a new `Chat` method, so after this step there is exactly one `Chat` method and exactly one route pointing to it.)
 
 - [ ] **Step 4: Delete the `agent` package**
 
