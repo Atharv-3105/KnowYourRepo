@@ -101,6 +101,14 @@ func (r *HybridRetriever) Search (ctx context.Context,repoID string,query string
 	
 
 	var results []RetrievalResult
+	// Large functions are chunked with overlap during ingestion (see
+	// chunk/representation), so two separately-embedded chunks of the same
+	// function can both rank in the top-k and come back as two distinct
+	// search hits sharing one symbol+file_path. Deduping here, by rank
+	// order, keeps whichever chunk the vector search itself ranked higher
+	// and drops the rest - without this, the same symbol can appear twice
+	// in a single answer's citations.
+	seen := make(map[string]bool)
 
 	for _, sr := range searchResults {
 
@@ -119,13 +127,19 @@ func (r *HybridRetriever) Search (ctx context.Context,repoID string,query string
 
 		filePathRaw, ok := sr.Metadata["file_path"]
 		if !ok {
-			continue 
+			continue
 		}
 
 		filePath, ok := filePathRaw.(string)
 		if !ok {
 			continue
 		}
+
+		dedupeKey := symbol + "|" + filePath
+		if seen[dedupeKey] {
+			continue
+		}
+		seen[dedupeKey] = true
 
 		r.logger.Info(
 			"retrieved_symbol",
