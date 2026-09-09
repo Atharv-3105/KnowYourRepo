@@ -38,6 +38,17 @@ func buildSources(results []retrieval.RetrievalResult) []Source {
 			continue
 		}
 
+		// A result with no FilePath isn't a real, clickable citation - the
+		// lexical fallback (answer/service.go via retrieval.LexicalSearch)
+		// produces these for calls to symbols that were never locally
+		// defined (stdlib/external functions like "asyncio.create_task"),
+		// which genuinely have nowhere in this repo to jump to. It still
+		// reached the LLM prompt via `results` - only the citation is
+		// skipped here.
+		if r.FilePath == "" {
+			continue
+		}
+
 		sources = append(sources, Source{
 			Symbol:    r.Symbol,
 			FilePath:  r.FilePath,
@@ -109,12 +120,29 @@ func (h *RepoHandler) Chat(c *gin.Context) {
 	})
 }
 
-// toolsUsed reports which retrieval capabilities actually contributed to
-// this answer, for the frontend's per-tool citation badges (Brick 25).
-// "semantic" always ran; "architecture" only shows up if an overview
-// result was actually appended.
+// toolsUsed reports which retrieval capabilities actually contributed
+// grounding to this answer, for the frontend's per-tool citation badges
+// (Brick 25). Each capability is reported only if at least one surviving
+// result actually came from it - not merely attempted, per Origin
+// (retrieval.HybridRetriever.Search/LexicalSearch) or, for the architecture
+// overview, its sentinel Symbol (answer.Service.Answer's overviewAsResult).
 func toolsUsed(results []retrieval.RetrievalResult) []string {
-	tools := []string{"semantic"}
+	tools := make([]string, 0, 3)
+	hasOrigin := func(origin string) bool {
+		for _, r := range results {
+			if r.Origin == origin {
+				return true
+			}
+		}
+		return false
+	}
+
+	if hasOrigin("semantic") {
+		tools = append(tools, "semantic")
+	}
+	if hasOrigin("lexical") {
+		tools = append(tools, "lexical")
+	}
 	for _, r := range results {
 		if r.Symbol == "architecture_overview" {
 			tools = append(tools, "architecture")

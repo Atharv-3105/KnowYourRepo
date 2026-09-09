@@ -73,13 +73,31 @@ func (s *Service) Answer(ctx context.Context, repoID, query, history string) (an
 		s.triggerBackgroundSync(repoID)
 	}
 
-	results, err = s.retriever.Search(ctx, repoID, query)
-	if err != nil {
+	results, searchErr := s.retriever.Search(ctx, repoID, query)
+	if searchErr != nil {
+		// Not fatal - the lexical/call-graph lookup below doesn't depend on
+		// the embedding provider at all, and can still ground a question
+		// that names a real identifier even when semantic search is down.
 		metrics.AgentToolExecutionsTotal.WithLabelValues("semantic", "failed").Inc()
-		s.logger.Error("answer_service_search_failed", "repo_id", repoID, "error", err)
-		return "", refreshing, nil, err
+		s.logger.Warn("answer_service_search_failed", "repo_id", repoID, "error", searchErr)
+		results = nil
+	} else {
+		metrics.AgentToolExecutionsTotal.WithLabelValues("semantic", "success").Inc()
 	}
-	metrics.AgentToolExecutionsTotal.WithLabelValues("semantic", "success").Inc()
+
+	if lexicalResults, lexErr := s.retriever.LexicalSearch(ctx, repoID, query); lexErr != nil {
+		metrics.AgentToolExecutionsTotal.WithLabelValues("lexical", "failed").Inc()
+		s.logger.Warn("answer_service_lexical_search_failed", "repo_id", repoID, "error", lexErr)
+	} else {
+		metrics.AgentToolExecutionsTotal.WithLabelValues("lexical", "success").Inc()
+		results = mergeResults(results, lexicalResults)
+	}
+
+	// Only genuinely fatal if semantic search failed AND lexical grounding
+	// found nothing either - there's no context left to answer from at all.
+	if searchErr != nil && len(results) == 0 {
+		return "", refreshing, nil, searchErr
+	}
 
 	if WantsArchitectureOverview(query) {
 		if overview, ovErr := s.architectureService.BuildSummary(ctx, repoID); ovErr != nil {
@@ -104,6 +122,29 @@ func (s *Service) Answer(ctx context.Context, repoID, query, history string) (an
 	s.logger.Info("answer_service_completed", "repo_id", repoID)
 
 	return answer, refreshing, results, nil
+}
+
+// mergeResults appends extra's entries onto base, skipping any whose
+// symbol+file_path already appears in base - so a lexical hit never
+// duplicates a symbol semantic search already surfaced, but still adds
+// genuinely new grounding (a call-graph edge to a symbol semantic search
+// missed entirely) that base doesn't have.
+func mergeResults(base, extra []retrieval.RetrievalResult) []retrieval.RetrievalResult {
+	seen := make(map[string]bool, len(base))
+	for _, r := range base {
+		seen[r.Symbol+"|"+r.FilePath] = true
+	}
+
+	for _, r := range extra {
+		key := r.Symbol + "|" + r.FilePath
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		base = append(base, r)
+	}
+
+	return base
 }
 
 func (s *Service) triggerBackgroundSync(repoID string) {

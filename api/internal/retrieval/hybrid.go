@@ -16,6 +16,12 @@ type RetrievalResult struct {
 	Document    string       `json:"document"`
 	Metadata    map[string]interface{} 		`json:"metadata"`
 	Distance    float64		 `json:"distance"`
+	// Origin names which retrieval path produced this result ("semantic" or
+	// "lexical") - never serialized to a client (RetrievalResult is always
+	// converted field-by-field into api.Source), used internally so the
+	// chat handler can report real per-capability tools_used instead of
+	// guessing from result shape.
+	Origin string `json:"-"`
 }
 
 type GraphEdge struct {
@@ -173,6 +179,7 @@ func (r *HybridRetriever) Search (ctx context.Context,repoID string,query string
 			Metadata: sr.Metadata,
 			Distance: sr.Distance,
 			Edges: edges,
+			Origin: "semantic",
 		})
 	}
 
