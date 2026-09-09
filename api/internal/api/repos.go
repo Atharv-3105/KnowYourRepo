@@ -121,17 +121,12 @@ func(h *RepoHandler) CreateRepo(c *gin.Context) {
 		h.logger.Info("repo_already_ingested_refreshing", "repo_id", repoID, "repo_url", req.RepoURL)
 	} else {
 
-		//Create the complete process of Fresh RepoID creation
+		//Create the complete process of Fresh RepoID creation. The
+		//repositories row itself is NOT inserted here - it's inserted by
+		//ingestRepository only after CloneRepo actually succeeds, so a
+		//failed clone never leaves a "ghost" repository (zero files, but
+		//indistinguishable from a real empty repo to every read endpoint).
 		repoID = generateRepoDirName()
-
-		//Insert the repository into the DB
-		if err := h.store.InsertRepository(ctx, store.Repository{
-			ID:			repoID,
-			RepoURL:    req.RepoURL,
-		}); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-			return
-		}
 	}
 
 	//Generate a Job for Ingestion workers - runs for both the existing-repo
@@ -161,6 +156,30 @@ func(h *RepoHandler) CreateRepo(c *gin.Context) {
 		Message: "ingestion queued",
 		RepoID:	repoID,
 	})
+}
+
+// requireRepoExists checks that repoID names a repository that actually
+// completed ingestion. Every read endpoint scoped by repoID (architecture,
+// symbols, bounded graph, ...) queries tables that are simply empty for any
+// unknown ID - without this check they return a misleading 200 with
+// zeroed-out data instead of a 404, indistinguishable from a real repo that
+// just happens to have no files yet. Returns true and writes nothing if the
+// repo exists; otherwise writes the appropriate error response itself and
+// returns false, so callers can just `if !h.requireRepoExists(c, repoID) { return }`.
+func (h *RepoHandler) requireRepoExists(c *gin.Context, repoID string) bool {
+
+	repo, err := h.store.GetRepositoryByID(c.Request.Context(), repoID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return false
+	}
+
+	if repo == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "repository not found: " + repoID})
+		return false
+	}
+
+	return true
 }
 
 // handleIngestionJob adapts ingestRepository to the worker.Handler
@@ -232,6 +251,16 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 
 		if err := h.cloner.CloneRepo(ctx, repoURL, repoDir); err != nil {
 			return fmt.Errorf("clone failed: %w", err)
+		}
+
+		//Only now that the clone actually succeeded does this repo become a
+		//real, browsable entity - see the comment in CreateRepo for why this
+		//moved out of the synchronous POST /repos path.
+		if err := h.store.InsertRepository(ctx, store.Repository{
+			ID:      repoID,
+			RepoURL: repoURL,
+		}); err != nil {
+			return fmt.Errorf("failed to record repository: %w", err)
 		}
 
 	} else {

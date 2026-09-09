@@ -25,6 +25,10 @@ func (h *RepoHandler) ListSymbols(c *gin.Context) {
 	repoID := c.Param("repoID")
 	search := c.Query("search")
 
+	if !h.requireRepoExists(c, repoID) {
+		return
+	}
+
 	symbols, err := h.store.ListSymbols(c.Request.Context(), repoID, search)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

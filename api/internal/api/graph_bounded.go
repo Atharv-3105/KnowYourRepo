@@ -43,6 +43,10 @@ func (h *RepoHandler) GetBoundedCallGraph(c *gin.Context) {
 
 	repoID := c.Param("repoID")
 
+	if !h.requireRepoExists(c, repoID) {
+		return
+	}
+
 	symbol := c.Query("symbol")
 	if symbol == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "symbol query param is required"})

@@ -21,6 +21,10 @@ func(h *RepoHandler) GetArchitecture(c *gin.Context) {
 
 	h.logger.Info("architecture_request_received", "repo_id", repoID)
 
+	if !h.requireRepoExists(c, repoID) {
+		return
+	}
+
 	summary, err := h.architectureService.BuildSummary(c.Request.Context(), repoID)
 
 	if err != nil {
