@@ -38,5 +38,10 @@ class Settings(BaseSettings):
     voyage_api_key: str = ""
     voyage_model: str = "voyage-code-3"
     voyage_dimension: int = 1024
+    # Voyage's own advertised rate limit for this API key - defaults to
+    # the free tier's 3 RPM. Bump via VOYAGE_RPM_LIMIT after adding a
+    # payment method raises the real limit; see VoyageProvider for why
+    # this needs proactive throttling at all.
+    voyage_rpm_limit: int = 3
     
 settings = Settings()
