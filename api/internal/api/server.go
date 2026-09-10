@@ -4,9 +4,11 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"golang.org/x/time/rate"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/config"
 	"github.com/atharva-3105/KnowYourRepo/internal/sidecar"
@@ -62,7 +64,16 @@ func (s *Server) registerRoutes() {
 	//Repo ingestion route
 	repoHandler := NewRepoHandler(s.logger,s.store, s.sidecar)
 
-	s.router.POST("/repos", repoHandler.CreateRepo)
+	// Per-IP token-bucket limiters, attached only to routes that front real
+	// LLM/embedding provider cost or heavy background work - not global,
+	// since routes like /health or browsing an already-ingested repo don't
+	// need this protection. Chat allows a small natural burst (a couple of
+	// quick follow-up questions); repo creation/sync is stricter since a
+	// single call fans out into a full clone+parse+embed pipeline.
+	chatLimiter := NewKeyLimiter(rate.Every(6*time.Second), 5)   // ~10/min, burst 5
+	ingestLimiter := NewKeyLimiter(rate.Every(60*time.Second), 2) // ~1/min, burst 2
+
+	s.router.POST("/repos", ingestLimiter.Middleware(), repoHandler.CreateRepo)
 
 	//List ingested repositories
 	s.router.GET("/repos", repoHandler.ListRepos)
@@ -80,7 +91,7 @@ func (s *Server) registerRoutes() {
 	s.router.POST("/search", repoHandler.Search)
 
 	//Chat Route
-	s.router.POST("/chat", repoHandler.Chat)
+	s.router.POST("/chat", chatLimiter.Middleware(), repoHandler.Chat)
 
 	//Architecture Route
 	s.router.GET("/architecture/:repoID", repoHandler.GetArchitecture)
@@ -89,7 +100,7 @@ func (s *Server) registerRoutes() {
 	s.router.GET("/repos/jobs/:id", repoHandler.GetJobStatus)
 
 	//On-demand repo sync check
-	s.router.POST("/repos/:id/sync", repoHandler.SyncRepo)
+	s.router.POST("/repos/:id/sync", ingestLimiter.Middleware(), repoHandler.SyncRepo)
 
 	//Raw file content, served from the repo's on-disk clone
 	s.router.GET("/files/:repoID", repoHandler.GetFileContent)

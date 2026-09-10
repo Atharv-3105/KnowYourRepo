@@ -54,7 +54,9 @@ cd frontend && npm run lint    # oxlint
 ```
 `extraction-service` has `pytest` as a listed dependency but no test files exist yet — there is no Python test suite to run.
 
-Go test coverage exists for `internal/graph`, `internal/ingestion`, `internal/retrieval`, `internal/sidecar`, `internal/store` — check `*_test.go` in those packages for existing patterns before adding new tests elsewhere.
+Go test coverage exists for `internal/answer`, `internal/api`, `internal/graph`, `internal/ingestion`, `internal/retrieval`, `internal/sidecar`, `internal/store` — check `*_test.go` in those packages for existing patterns before adding new tests elsewhere.
+
+**Known flakiness**: `internal/retrieval`, `internal/store`, and `internal/answer` all run integration-style tests against the real `TEST_DATABASE_URL` Postgres, and several `TRUNCATE TABLE call_edges, edges, symbols, files, repositories` between tests — a blanket wipe, not scoped by repo_id. `go test ./...` runs different packages concurrently by default, so two of these packages' tests can occasionally truncate each other's rows mid-test and fail with a spurious "expected N rows, got 0". Not a code bug - if `go test ./...` fails only in one of these three packages, first retry with `go test ./... -p 1` (forces sequential package execution) before assuming a real regression.
 
 ## Architecture
 
