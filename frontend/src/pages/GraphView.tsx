@@ -1,39 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
-import cytoscape from "cytoscape";
-import dagre from "cytoscape-dagre";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ApiError, getArchitecture, getBoundedGraph } from "../api";
 import type { GraphNode } from "../api";
 import CopyableLocation from "../components/CopyableLocation";
 import ErrorState from "../components/ErrorState";
+import GraphCanvas2D from "../components/GraphCanvas2D";
+import GraphCanvas3D from "../components/GraphCanvas3D";
 import { SkeletonBlock } from "../components/Skeleton";
 import OpenInCodeView from "../components/OpenInCodeView";
-import { duration } from "../lib/motion";
-
-cytoscape.use(dagre);
 
 const DEFAULT_DEPTH = 2;
-// Cytoscape's own transition-duration is a plain number of seconds, so
-// duration.base (already in seconds, lib/motion.ts) applies directly with
-// no unit conversion. Its timing-function type only accepts named curves,
-// not arbitrary cubic-bezier arrays - "ease-in-out" is the closest built-in
-// match to the shared easeInOut curve, which lib/motion.ts names for
-// exactly this use (symmetric fade, no overshoot).
-//
-// The graph canvas is Cytoscape's own render surface, not React DOM - it's
-// covered by neither index.css's prefers-reduced-motion rule (real CSS
-// transitions only) nor main.tsx's MotionConfig (motion's own components
-// only), so it needs its own explicit check.
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export default function GraphView() {
   const { repoId } = useParams<{ repoId: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const cyRef = useRef<cytoscape.Core | null>(null);
+  const [renderMode, setRenderMode] = useState<"2d" | "3d">("2d");
 
   // Priority: a symbol the user explicitly picked in this session > a
   // ?symbol= param (arrived here via a "View in graph" link from a Chat
@@ -65,17 +48,6 @@ export default function GraphView() {
     enabled: Boolean(repoId) && Boolean(rootSymbol),
   });
 
-  const elements = useMemo(() => {
-    if (!graphQuery.data) return [];
-    const nodeEls = graphQuery.data.nodes.map((n) => ({
-      data: { id: n.symbol, label: n.symbol, filePath: n.file_path ?? "" },
-    }));
-    const edgeEls = graphQuery.data.edges.map((e) => ({
-      data: { id: `${e.caller}->${e.callee}`, source: e.caller, target: e.callee },
-    }));
-    return [...nodeEls, ...edgeEls];
-  }, [graphQuery.data]);
-
   // Callers/callees for the selected node, within the currently loaded
   // bounded graph only (not an exhaustive repo-wide lookup - the backend's
   // /graph endpoint is intentionally depth-bounded, see Brick 3's doc).
@@ -90,98 +62,6 @@ export default function GraphView() {
     if (!selectedNode || !graphQuery.data) return [];
     return graphQuery.data.edges.filter((e) => e.caller === selectedNode.symbol).map((e) => e.callee);
   }, [selectedNode, graphQuery.data]);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    // Checked per cy instance (elements/rootSymbol change), not just once
-    // at module load - cheap, and means a session that starts before the
-    // OS setting changes still picks it up on the next graph rebuild.
-    const focusTransition = prefersReducedMotion() ? 0 : duration.base;
-    const focusEasing = "ease-in-out" as const;
-
-    const cy = cytoscape({
-      container: containerRef.current,
-      elements,
-      style: [
-        {
-          selector: "node",
-          style: {
-            label: "data(label)",
-            "font-family": '"JetBrains Mono", monospace',
-            "font-size": 10,
-            color: "#1a1d24",
-            "background-color": "#6b6f7a",
-            "border-width": 0,
-            width: 22,
-            height: 22,
-            "text-valign": "bottom",
-            "text-margin-y": 6,
-            "transition-property": "opacity",
-            "transition-duration": focusTransition,
-            "transition-timing-function": focusEasing,
-          },
-        },
-        {
-          // Rust (--color-tool-graph), not the primary accent blue - the
-          // root-symbol emphasis on this page is specifically the graph
-          // tool's own output, so it takes the graph tool's color rather
-          // than the app-wide interactive accent (see this brick's doc).
-          selector: `node[id = "${rootSymbol}"]`,
-          style: { "background-color": "#b5502c", width: 30, height: 30 },
-        },
-        {
-          selector: "edge",
-          style: {
-            width: 1.25,
-            "line-color": "#9a9d9d",
-            "target-arrow-color": "#9a9d9d",
-            "target-arrow-shape": "triangle",
-            "arrow-scale": 0.8,
-            "curve-style": "bezier",
-            "transition-property": "opacity",
-            "transition-duration": focusTransition,
-            "transition-timing-function": focusEasing,
-          },
-        },
-        {
-          // Focus mode: elements not connected to the selected node fade
-          // out in place (opacity only) - deliberately not a re-layout,
-          // which would disorient anyone tracking the graph's shape.
-          selector: ".dimmed",
-          style: { opacity: 0.15 },
-        },
-      ],
-      layout: { name: "dagre" } as cytoscape.LayoutOptions,
-    });
-
-    cy.on("tap", "node", (evt) => {
-      const node = evt.target;
-      const data = node.data();
-      setSelectedNode({ symbol: data.id, file_path: data.filePath || undefined });
-
-      const neighborhood = node.closedNeighborhood();
-      cy.elements().difference(neighborhood).addClass("dimmed");
-      neighborhood.removeClass("dimmed");
-    });
-
-    // Tapping empty canvas (not an element) clears focus mode and
-    // deselects - evt.target is the core itself only for background taps,
-    // since node taps are handled by the delegate listener above.
-    cy.on("tap", (evt) => {
-      if (evt.target === cy) {
-        cy.elements().removeClass("dimmed");
-        setSelectedNode(null);
-      }
-    });
-
-    cyRef.current = cy;
-
-    return () => {
-      cy.destroy();
-      cyRef.current = null;
-    };
-  }, [elements, rootSymbol]);
 
   const focusOn = (symbol: string) => setManualRootSymbol(symbol);
 
@@ -224,6 +104,27 @@ export default function GraphView() {
             className="w-16 border border-line-faint bg-page-deep px-2.5 py-1.5 font-mono text-sm text-ink"
           />
         </label>
+
+        <div className="text-sm">
+          <span className="mb-1 block text-xs text-ink-dim">View</span>
+          <div className="flex border border-line-faint">
+            {(["2d", "3d"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => setRenderMode(mode)}
+                aria-pressed={renderMode === mode}
+                className={`px-2.5 py-1.5 font-mono text-sm uppercase transition-colors ${
+                  renderMode === mode
+                    ? "bg-tool-graph text-page-deep"
+                    : "text-ink-dim hover:text-ink"
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {architectureQuery.isError && (
@@ -263,19 +164,28 @@ export default function GraphView() {
 
       {rootSymbol && (
         <figure className="mt-4">
-          {/* Always mounted once a root symbol exists (not conditionally
-              swapped with the skeleton below) - Cytoscape attaches to this
-              exact DOM node in the effect above, keyed on containerRef;
-              unmounting and remounting it on every loading transition
-              would tear down and rebuild that attachment for no reason. */}
           <div className="relative h-[420px] w-full">
             {/* Top rule in the graph tool's own accent, not a decorative
                 border - this canvas IS that tool's output, the same
                 reasoning behind Chat's per-tool badge coloring (Brick 25). */}
-            <div
-              ref={containerRef}
-              className="h-full w-full border border-line-faint border-t-2 border-t-tool-graph bg-page-deep"
-            />
+            <div className="h-full w-full border border-line-faint border-t-2 border-t-tool-graph bg-page-deep">
+              {graphQuery.data &&
+                (renderMode === "2d" ? (
+                  <GraphCanvas2D
+                    nodes={graphQuery.data.nodes}
+                    edges={graphQuery.data.edges}
+                    rootSymbol={rootSymbol}
+                    onSelectNode={setSelectedNode}
+                  />
+                ) : (
+                  <GraphCanvas3D
+                    nodes={graphQuery.data.nodes}
+                    edges={graphQuery.data.edges}
+                    rootSymbol={rootSymbol}
+                    onSelectNode={setSelectedNode}
+                  />
+                ))}
+            </div>
             {graphQuery.isLoading && (
               <SkeletonBlock className="absolute inset-0 border border-line-faint" />
             )}
