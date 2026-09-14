@@ -1,1 +1,7 @@
 .vscode
+
+# Python (extraction-service) - never track secrets, venvs, or bytecode caches
+.env
+extraction-service/env/
+__pycache__/
+*.pyc
