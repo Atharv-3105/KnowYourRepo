@@ -8,3 +8,9 @@ data/
 extraction-service/env/
 __pycache__/
 *.pyc
+
+# Pre-Postgres-migration local artifacts (SQLite + Chroma)
+chroma_db/
+api/knowyourrepo.db
+api/knowyourrepo.db-shm
+api/knowyourrepo.db-wal
