@@ -57,7 +57,7 @@ func NewRepoHandler(
 
 	builder := contextbuilder.NewBuilder(logger)
 	architectureAnalyzer := architecture.NewAnalyzer(logger, store)
-	architectureService := architecture.NewService(logger, architectureAnalyzer)
+	architectureService := architecture.NewService(logger, architectureAnalyzer, store, sidecar)
 
 	hybridRetriever := retrieval.NewHybridRetriever(store, sidecar, logger)
 	ragService := rag.NewService(builder, sidecar, logger)
@@ -384,6 +384,20 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 
 	if err := representation.SaveRepository(repoIR, irPath); err != nil {
 		h.logger.Error("failed to save repository IR", "error", err)
+	}
+
+	readmeText, err := h.walker.ReadReadme(repoDir)
+	if err != nil {
+		h.logger.Warn("failed to read readme", "repo_id", repoID, "error", err)
+		readmeText = ""
+	}
+
+	// Non-fatal: overview generation failing (all LLM providers exhausted,
+	// zero entrypoints detected, etc.) must never fail the whole ingestion
+	// job - symbols/embeddings are the core value, the overview is
+	// supplementary. See the design spec's Error handling section.
+	if err := h.architectureService.GenerateOverview(ctx, repoID, readmeText); err != nil {
+		h.logger.Warn("overview_generation_failed", "repo_id", repoID, "error", err)
 	}
 
 	if err := h.store.UpdateJobStage(ctx, jobID, store.StageDone); err != nil {
