@@ -21,10 +21,10 @@ type OverviewConcept struct {
 }
 
 type GenerateOverviewRequest struct {
-	ReadmeText             string               `json:"readme_text"`
-	Entrypoints            []OverviewEntrypoint `json:"entrypoints"`
-	DirectoryStructure     []string             `json:"directory_structure"`
-	RepresentativeSymbols  []string             `json:"representative_symbols"`
+	ReadmeText            string               `json:"readme_text"`
+	Entrypoints           []OverviewEntrypoint `json:"entrypoints"`
+	DirectoryStructure    []string             `json:"directory_structure"`
+	RepresentativeSymbols []string             `json:"representative_symbols"`
 }
 
 type GenerateOverviewResponse struct {

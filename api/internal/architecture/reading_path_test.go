@@ -68,6 +68,9 @@ func TestBuildReadingPath_RanksByCallerCount(t *testing.T) {
 }
 
 func TestBuildReadingPath_NoEntrypointsFallsBackToCallerRanking(t *testing.T) {
+	// helper is called by two distinct callers (coreLogic, otherCaller), both
+	// of which call nothing else - so helper has the highest caller count (2)
+	// of any symbol in the graph and must rank first in the fallback.
 	callEdges := []store.ArchitectureCallEdge{
 		{CallerSymbol: "coreLogic", CallerFilePath: "core.go", CalleeeSymbol: "helper"},
 		{CallerSymbol: "otherCaller", CallerFilePath: "other.go", CalleeeSymbol: "helper"},
@@ -82,6 +85,19 @@ func TestBuildReadingPath_NoEntrypointsFallsBackToCallerRanking(t *testing.T) {
 		if s.Reason == "Entrypoint" {
 			t.Errorf("no entrypoints were given, no step should be reasoned \"Entrypoint\": %+v", s)
 		}
+	}
+
+	helperIdx := -1
+	for i, s := range steps {
+		if s.Symbol == "helper" {
+			helperIdx = i
+		}
+	}
+	if helperIdx == -1 {
+		t.Fatalf("expected helper (callee-only symbol, never itself a caller) in the fallback path, got %+v", steps)
+	}
+	if helperIdx != 0 {
+		t.Errorf("expected helper (2 callers, the most of any symbol) to rank first, got index %d in %+v", helperIdx, steps)
 	}
 }
 

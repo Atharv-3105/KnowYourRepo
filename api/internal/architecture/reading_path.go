@@ -82,9 +82,15 @@ func BuildReadingPath(entrypoints []EntryPoint, callEdges []store.ArchitectureCa
 			}
 		}
 	} else {
-		// No entrypoints detected - rank every symbol seen as a caller,
-		// no BFS anchor to depth-order them, so depth is uniform.
-		for symbol := range fileOf {
+		// No entrypoints detected - rank every symbol seen anywhere in the
+		// call graph (as either caller or callee) by caller count, no BFS
+		// anchor to depth-order them, so depth is uniform.
+		seen := make(map[string]struct{})
+		for _, e := range callEdges {
+			seen[e.CallerSymbol] = struct{}{}
+			seen[e.CalleeeSymbol] = struct{}{}
+		}
+		for symbol := range seen {
 			order = append(order, discovered{symbol, 1})
 		}
 	}
@@ -93,7 +99,10 @@ func BuildReadingPath(entrypoints []EntryPoint, callEdges []store.ArchitectureCa
 		if order[i].depth != order[j].depth {
 			return order[i].depth < order[j].depth
 		}
-		return callerCount[order[i].symbol] > callerCount[order[j].symbol]
+		if callerCount[order[i].symbol] != callerCount[order[j].symbol] {
+			return callerCount[order[i].symbol] > callerCount[order[j].symbol]
+		}
+		return order[i].symbol < order[j].symbol
 	})
 
 	entrypointSet := make(map[string]bool, len(entrypoints))
