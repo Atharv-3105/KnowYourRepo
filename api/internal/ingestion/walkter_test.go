@@ -2,6 +2,7 @@ package ingestion
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -48,4 +49,68 @@ func TestWalker_WalkRepo(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestReadReadme_FindsRootReadme(t *testing.T) {
+	dir := t.TempDir()
+	content := "# My Project\n\nThis project does things."
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write fixture README: %v", err)
+	}
+
+	w := NewWalker(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	got, err := w.ReadReadme(dir)
+	if err != nil {
+		t.Fatalf("ReadReadme failed: %v", err)
+	}
+	if got != content {
+		t.Errorf("expected README content %q, got %q", content, got)
+	}
+}
+
+func TestReadReadme_CaseInsensitive(t *testing.T) {
+	dir := t.TempDir()
+	content := "lowercase readme"
+	if err := os.WriteFile(filepath.Join(dir, "readme.md"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write fixture README: %v", err)
+	}
+
+	w := NewWalker(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	got, err := w.ReadReadme(dir)
+	if err != nil {
+		t.Fatalf("ReadReadme failed: %v", err)
+	}
+	if got != content {
+		t.Errorf("expected README content %q, got %q", content, got)
+	}
+}
+
+func TestReadReadme_NoReadmePresent(t *testing.T) {
+	dir := t.TempDir()
+
+	w := NewWalker(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	got, err := w.ReadReadme(dir)
+	if err != nil {
+		t.Fatalf("expected no error when no README is present, got: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected empty string when no README is present, got: %q", got)
+	}
+}
+
+func TestReadReadme_TruncatesLongReadme(t *testing.T) {
+	dir := t.TempDir()
+	content := strings.Repeat("x", maxReadmeChars+500)
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write fixture README: %v", err)
+	}
+
+	w := NewWalker(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	got, err := w.ReadReadme(dir)
+	if err != nil {
+		t.Fatalf("ReadReadme failed: %v", err)
+	}
+	if len(got) != maxReadmeChars {
+		t.Errorf("expected truncation to %d chars, got %d", maxReadmeChars, len(got))
+	}
 }

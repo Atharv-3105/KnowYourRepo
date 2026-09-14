@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+const maxReadmeChars = 8000
+
+var readmeCandidates = []string{"README.md", "README.rst", "README.txt", "README"}
+
 type FileInfo struct {
 	Path string  //Absolute File Path
 	RelPath string //Relative File Path
@@ -94,7 +98,7 @@ func (w *Walker) WalkRepo(ctx context.Context, root string) ([]FileInfo, error) 
 } 
 
 
-//detectLanguage infers programming language 
+//detectLanguage infers programming language
 func detectLanguage(path string) string {
 	//get the lower-case value of the extension of filetype
 	ext := strings.ToLower(filepath.Ext(path))
@@ -119,4 +123,42 @@ func detectLanguage(path string) string {
 	default:
 		return ""
 	}
+}
+
+// ReadReadme reads a root-level README (case-insensitive, not scanned into
+// subdirectories - see the design spec's README ingestion section) as plain
+// text, capped at maxReadmeChars. Returns ("", nil), not an error, when no
+// README is present - overview generation degrades gracefully without one.
+func (w *Walker) ReadReadme(repoRoot string) (string, error) {
+	entries, err := os.ReadDir(repoRoot)
+	if err != nil {
+		return "", fmt.Errorf("failed to read repo root: %w", err)
+	}
+
+	byLowerName := make(map[string]os.DirEntry, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			byLowerName[strings.ToLower(e.Name())] = e
+		}
+	}
+
+	for _, candidate := range readmeCandidates {
+		entry, ok := byLowerName[strings.ToLower(candidate)]
+		if !ok {
+			continue
+		}
+
+		content, err := os.ReadFile(filepath.Join(repoRoot, entry.Name()))
+		if err != nil {
+			return "", fmt.Errorf("failed to read %s: %w", entry.Name(), err)
+		}
+
+		text := string(content)
+		if len(text) > maxReadmeChars {
+			text = text[:maxReadmeChars]
+		}
+		return text, nil
+	}
+
+	return "", nil
 }
