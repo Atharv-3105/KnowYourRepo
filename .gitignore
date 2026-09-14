@@ -1,5 +1,8 @@
 .vscode
 
+# Cloned repo working copies from ingestion - never meant to be tracked
+data/
+
 # Python (extraction-service) - never track secrets, venvs, or bytecode caches
 .env
 extraction-service/env/
