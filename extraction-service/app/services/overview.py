@@ -53,10 +53,20 @@ def _parse_response(raw: str) -> GenerateOverviewResponse:
         logger.warning("overview_generation_parse_failed error=%s raw=%s", e, raw[:500])
         raise ValueError(f"failed to parse overview generation response as JSON: {e}") from e
 
-    return GenerateOverviewResponse(
-        narrative_summary=parsed.get("narrative_summary", ""),
-        concepts=[OverviewConcept(**c) for c in parsed.get("concepts", [])],
-    )
+    if not isinstance(parsed, dict):
+        logger.warning("overview_generation_parse_failed error=not a JSON object raw=%s", raw[:500])
+        raise ValueError(
+            f"expected overview generation response to be a JSON object, got {type(parsed).__name__}"
+        )
+
+    try:
+        return GenerateOverviewResponse(
+            narrative_summary=parsed.get("narrative_summary", ""),
+            concepts=[OverviewConcept(**c) for c in parsed.get("concepts", [])],
+        )
+    except (TypeError, ValueError) as e:
+        logger.warning("overview_generation_parse_failed error=%s raw=%s", e, raw[:500])
+        raise ValueError(f"overview generation response had an unexpected shape: {e}") from e
 
 
 async def generate_overview(
