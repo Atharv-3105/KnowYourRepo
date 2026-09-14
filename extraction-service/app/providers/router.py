@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 TASK_PROVIDER_ORDER: dict[str, list[str]] = {
     "answer" : ["groq", "gemini", "cerebras", "openrouter"],
+    "overview": ["groq", "gemini", "cerebras", "openrouter"],
     "default": ["groq", "gemini", "cerebras", "openrouter"],
 }
 
