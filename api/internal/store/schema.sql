@@ -72,3 +72,14 @@ CREATE INDEX IF NOT EXISTS idx_call_edges_repo_callee ON call_edges(repo_id, cal
 -- ingestRepository at each actual phase transition - NULL while a job is
 -- still queued, not yet picked up by a worker.
 ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS stage TEXT;
+
+-- Generated once per ingestion/sync by architecture.Service.GenerateOverview
+-- (narrative summary + notable concepts, LLM-generated). ON DELETE CASCADE
+-- so this row disappears automatically if the repository row is ever
+-- deleted - no separate cleanup path needed.
+CREATE TABLE IF NOT EXISTS repo_overview (
+    repo_id           TEXT PRIMARY KEY REFERENCES repositories(id) ON DELETE CASCADE,
+    narrative_summary TEXT,
+    concepts          JSONB,
+    generated_at      TIMESTAMPTZ
+);
