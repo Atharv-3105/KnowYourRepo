@@ -46,7 +46,7 @@ func newTestService(t *testing.T, sidecarURL string, syncer RepoSyncer) (*Servic
 	sidecarClient := sidecar.NewClient(sidecarURL)
 	retriever := retrieval.NewHybridRetriever(dbStore, sidecarClient, logger)
 	analyzer := architecture.NewAnalyzer(logger, dbStore)
-	architectureService := architecture.NewService(logger, analyzer)
+	architectureService := architecture.NewService(logger, analyzer, dbStore, sidecarClient)
 	builder := contextbuilder.NewBuilder(logger)
 	ragService := rag.NewService(builder, sidecarClient, logger)
 
