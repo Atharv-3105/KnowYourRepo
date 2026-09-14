@@ -31,6 +31,7 @@ def get_embed_provider() -> EmbedProvider:
         )
     raise ValueError(f"Unsupported embed provider: {provider}")
 
+@lru_cache(maxsize=1)
 def get_llm_router() -> LLMRouter:
     """
         Builds the multi-provider LLM router.
