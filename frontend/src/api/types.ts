@@ -80,12 +80,26 @@ export interface ArchitectureComponent {
   end_line: number;
 }
 
+export interface ArchitectureConcept {
+  term: string;
+  explanation: string;
+}
+
+export interface ArchitectureReadingStep {
+  symbol: string;
+  file_path: string;
+  reason: string;
+}
+
 export interface ArchitectureSummary {
   repo_id: string;
   statistics: ArchitectureStatistics;
   languages: string[];
   entrypoints: ArchitectureEntrypoint[];
   components: ArchitectureComponent[];
+  narrative_summary: string;
+  concepts: ArchitectureConcept[];
+  reading_path: ArchitectureReadingStep[];
 }
 
 export interface GraphNode {

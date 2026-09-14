@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, getArchitecture, listRepos, listSymbols } from "../api";
 import ErrorState from "../components/ErrorState";
 import { SkeletonBlock, SkeletonLine } from "../components/Skeleton";
@@ -9,6 +9,7 @@ import { repoRelativePath, topLevelDir } from "../lib/path";
 
 export default function Overview() {
   const { repoId } = useParams<{ repoId: string }>();
+  const navigate = useNavigate();
 
   const architectureQuery = useQuery({
     queryKey: ["architecture", repoId],
@@ -94,6 +95,10 @@ export default function Overview() {
         )}
       </div>
 
+      {data.narrative_summary && (
+        <p className="max-w-2xl text-sm leading-relaxed text-ink">{data.narrative_summary}</p>
+      )}
+
       {data.languages.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {data.languages.map((lang) => (
@@ -134,13 +139,70 @@ export default function Overview() {
         )}
       </section>
 
-      {data.entrypoints.length > 0 && (
+      {data.reading_path.length > 0 ? (
         <section>
-          <h2 className="text-sm text-ink-dim">Entrypoints</h2>
-          <ul className="mt-2 space-y-1 font-mono text-sm">
-            {data.entrypoints.map((ep, i) => (
-              <li key={i} className="text-ink">
-                {ep.name} <span className="text-ink-dim">&middot; {repoRelativePath(ep.file_path, repoId)}</span>
+          <h2 className="text-sm text-ink-dim">Where to start reading</h2>
+          <ol className="mt-2 space-y-2 font-mono text-sm">
+            {data.reading_path.map((step, i) => (
+              <li key={`${step.symbol}-${i}`} className="text-ink">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span>{step.symbol}</span>
+                  {step.file_path && (
+                    <span className="text-xs text-ink-dim">{repoRelativePath(step.file_path, repoId!)}</span>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-ink-faint">
+                  <span>{step.reason}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(`/repos/${repoId}/chat?prefill=${encodeURIComponent(`What does ${step.symbol} do?`)}`)
+                    }
+                    className="border border-line-faint px-1.5 py-0.5 text-ink-dim transition-colors hover:border-accent hover:text-ink"
+                  >
+                    ask about this
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : (
+        data.entrypoints.length > 0 && (
+          <section>
+            <h2 className="text-sm text-ink-dim">Entrypoints</h2>
+            <ul className="mt-2 space-y-1 font-mono text-sm">
+              {data.entrypoints.map((ep, i) => (
+                <li key={i} className="text-ink">
+                  {ep.name} <span className="text-ink-dim">&middot; {repoRelativePath(ep.file_path, repoId!)}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )
+      )}
+
+      {data.concepts.length > 0 && (
+        <section>
+          <h2 className="text-sm text-ink-dim">Notable concepts</h2>
+          <ul className="mt-2 space-y-2 font-mono text-sm">
+            {data.concepts.map((concept, i) => (
+              <li key={`${concept.term}-${i}`} className="text-ink">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span>{concept.term}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate(
+                        `/repos/${repoId}/chat?prefill=${encodeURIComponent(`What does "${concept.term}" mean in this codebase?`)}`,
+                      )
+                    }
+                    className="border border-line-faint px-1.5 py-0.5 text-xs text-ink-dim transition-colors hover:border-accent hover:text-ink"
+                  >
+                    ask about this
+                  </button>
+                </div>
+                <p className="text-xs text-ink-faint">{concept.explanation}</p>
               </li>
             ))}
           </ul>
