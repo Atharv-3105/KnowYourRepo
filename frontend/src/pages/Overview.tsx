@@ -162,6 +162,13 @@ export default function Overview() {
                   >
                     ask about this
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/repos/${repoId}/graph?symbol=${encodeURIComponent(step.symbol)}`)}
+                    className="border border-line-faint px-1.5 py-0.5 text-ink-dim transition-colors hover:border-accent hover:text-ink"
+                  >
+                    view in graph
+                  </button>
                 </div>
               </li>
             ))}
