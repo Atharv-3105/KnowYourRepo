@@ -1,4 +1,4 @@
-package graph 
+package graph
 
 import (
 	sitter "github.com/smacker/go-tree-sitter"
@@ -14,7 +14,7 @@ func ExtractPythonCallGraph(root *sitter.Node, source []byte) []CallEdge {
 	walk = func(node *sitter.Node, caller string) {
 
 		if node == nil {
-			return 
+			return
 		}
 
 		nextCaller := caller
@@ -27,6 +27,11 @@ func ExtractPythonCallGraph(root *sitter.Node, source []byte) []CallEdge {
 			if nameNode != nil {
 				nextCaller = nameNode.Content(source)
 			}
+		} else if node.Type() == "lambda" {
+			// Anonymous lambda (e.g. `(lambda: helper())()`) - see
+			// anonymousFuncName's doc comment in callgraph.go for why this
+			// needs a synthetic name rather than its raw source text.
+			nextCaller = anonymousFuncName(node)
 		}
 
 		//Detect function callss
@@ -36,7 +41,12 @@ func ExtractPythonCallGraph(root *sitter.Node, source []byte) []CallEdge {
 
 			if functionNode != nil && caller != "" {
 
-				callee := functionNode.Content(source)
+				var callee string
+				if unwrapped := unwrapParens(functionNode); unwrapped.Type() == "lambda" {
+					callee = anonymousFuncName(unwrapped)
+				} else {
+					callee = functionNode.Content(source)
+				}
 
 				edges = append(edges,
 							   CallEdge{
