@@ -16,7 +16,15 @@ func TestSaveAndGetOverview(t *testing.T) {
 	}
 
 	concepts := []Concept{
-		{Term: "Worker pool", Explanation: "internal/worker.Pool processes ingestion jobs concurrently."},
+		{
+			Term: "Worker pool", Explanation: "internal/worker.Pool processes ingestion jobs concurrently.",
+			Symbol: "Pool", FilePath: "internal/worker/pool.go", StartLine: 12, EndLine: 40,
+		},
+		// A concept the LLM didn't - or couldn't - resolve to a real symbol
+		// (e.g. a general convention rather than one specific location) has
+		// no citation fields at all - must round-trip as zero values, not
+		// error.
+		{Term: "Repository pattern", Explanation: "Used to abstract Postgres access from business logic."},
 	}
 
 	if err := s.SaveOverview(ctx, "repo_overview_test", "This project ingests repos and answers questions about them.", concepts); err != nil {
@@ -33,8 +41,15 @@ func TestSaveAndGetOverview(t *testing.T) {
 	if got.NarrativeSummary != "This project ingests repos and answers questions about them." {
 		t.Errorf("unexpected narrative_summary: %q", got.NarrativeSummary)
 	}
-	if len(got.Concepts) != 1 || got.Concepts[0].Term != "Worker pool" {
+	if len(got.Concepts) != 2 || got.Concepts[0].Term != "Worker pool" {
 		t.Errorf("unexpected concepts: %+v", got.Concepts)
+	}
+	if got.Concepts[0].Symbol != "Pool" || got.Concepts[0].FilePath != "internal/worker/pool.go" ||
+		got.Concepts[0].StartLine != 12 || got.Concepts[0].EndLine != 40 {
+		t.Errorf("expected concept citation fields to round-trip through JSONB, got: %+v", got.Concepts[0])
+	}
+	if got.Concepts[1].Symbol != "" || got.Concepts[1].StartLine != 0 {
+		t.Errorf("expected an unresolved concept's citation fields to round-trip as zero values, got: %+v", got.Concepts[1])
 	}
 
 	// Re-saving (the re-ingestion/sync case) must overwrite, not duplicate.

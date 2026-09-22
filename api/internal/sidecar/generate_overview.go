@@ -18,6 +18,11 @@ type OverviewEntrypoint struct {
 type OverviewConcept struct {
 	Term        string `json:"term"`
 	Explanation string `json:"explanation"`
+	// Symbol is optional - the LLM's own claimed name for a real symbol
+	// this concept relates to, if any. Never trusted as a location by
+	// itself; the caller (architecture.Service.GenerateOverview) resolves
+	// it against the real symbol index before using it as a citation.
+	Symbol string `json:"symbol,omitempty"`
 }
 
 type GenerateOverviewRequest struct {

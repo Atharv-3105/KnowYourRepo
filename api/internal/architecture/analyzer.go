@@ -56,7 +56,7 @@ func (a *Analyzer) AnalyzeRepository(ctx context.Context, repoID string) (*Summa
 	a.logger.Info("architecture_entrypoints_detected", "count", len(entrypoints))
 
 	//=======Build the deterministic reading path (no LLM - see reading_path.go)===========
-	readingPath := BuildReadingPath(entrypoints, callEdges)
+	readingPath := BuildReadingPath(entrypoints, callEdges, symbols)
 
 	//=======Load the LLM-generated narrative summary/concepts, if generation has run===========
 	overview, err := a.store.GetOverview(ctx, repoID)
@@ -73,7 +73,10 @@ func (a *Analyzer) AnalyzeRepository(ctx context.Context, repoID string) (*Summa
 	if overview != nil {
 		narrativeSummary = overview.NarrativeSummary
 		for _, c := range overview.Concepts {
-			concepts = append(concepts, Concept{Term: c.Term, Explanation: c.Explanation})
+			concepts = append(concepts, Concept{
+				Term: c.Term, Explanation: c.Explanation,
+				Symbol: c.Symbol, FilePath: c.FilePath, StartLine: c.StartLine, EndLine: c.EndLine,
+			})
 		}
 	}
 

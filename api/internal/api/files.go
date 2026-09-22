@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -19,6 +20,38 @@ type FileContentResponse struct {
 	RepoID  string `json:"repo_id"`
 	Path    string `json:"path"`
 	Content string `json:"content"`
+}
+
+// extractSnippet returns the lines [startLine, endLine] (1-indexed,
+// inclusive) of content. When both are 0 (no range requested), returns
+// content unchanged. Out-of-bounds values are clamped rather than treated
+// as errors - the caller's line numbers come from the symbol index at
+// ingestion time and the file on disk can drift slightly since (a trailing
+// blank line, a line ending change), so a range that's slightly past the
+// end of the file degrades to whatever's actually there instead of failing
+// the whole request. A start past the actual end of the file returns "" -
+// there's genuinely nothing there to show.
+func extractSnippet(content string, startLine, endLine int) string {
+	if startLine <= 0 && endLine <= 0 {
+		return content
+	}
+
+	lines := strings.Split(content, "\n")
+
+	if startLine < 1 {
+		startLine = 1
+	}
+	if startLine > len(lines) {
+		return ""
+	}
+	if endLine < startLine {
+		endLine = startLine
+	}
+	if endLine > len(lines) {
+		endLine = len(lines)
+	}
+
+	return strings.Join(lines[startLine-1:endLine], "\n")
 }
 
 // GetFileContent handles GET /files/:repoID?path=<repo-relative path> -
@@ -110,11 +143,33 @@ func (h *RepoHandler) GetFileContent(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("file_content_served", "repo_id", repoID, "path", relPath, "bytes", len(content))
+	// start_line/end_line are optional - when present, only that range is
+	// returned instead of the whole file, for callers that just want a
+	// small preview (e.g. the reading-path/concepts snippets on Overview)
+	// rather than the full source.
+	startLine, endLine := 0, 0
+	if raw := c.Query("start_line"); raw != "" {
+		startLine, err = strconv.Atoi(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "start_line must be an integer"})
+			return
+		}
+	}
+	if raw := c.Query("end_line"); raw != "" {
+		endLine, err = strconv.Atoi(raw)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "end_line must be an integer"})
+			return
+		}
+	}
+
+	responseContent := extractSnippet(string(content), startLine, endLine)
+
+	h.logger.Info("file_content_served", "repo_id", repoID, "path", relPath, "bytes", len(responseContent))
 
 	c.JSON(http.StatusOK, FileContentResponse{
 		RepoID:  repoID,
 		Path:    relPath,
-		Content: string(content),
+		Content: responseContent,
 	})
 }

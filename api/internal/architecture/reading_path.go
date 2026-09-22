@@ -12,9 +12,11 @@ import (
 )
 
 type ReadingStep struct {
-	Symbol   string `json:"symbol"`
-	FilePath string `json:"file_path"`
-	Reason   string `json:"reason"`
+	Symbol    string `json:"symbol"`
+	FilePath  string `json:"file_path"`
+	Reason    string `json:"reason"`
+	StartLine int    `json:"start_line"`
+	EndLine   int    `json:"end_line"`
 }
 
 const maxReadingPathSteps = 12
@@ -24,7 +26,18 @@ const maxReadingPathSteps = 12
 // distinct-caller count (descending) within each depth. With zero
 // entrypoints (a real case - some repos have none detected), falls back to
 // ranking every symbol seen as a caller by caller count, with no BFS anchor.
-func BuildReadingPath(entrypoints []EntryPoint, callEdges []store.ArchitectureCallEdge) []ReadingStep {
+// symbols resolves each step's StartLine/EndLine (for a frontend code-preview
+// snippet) by matching on name - a symbol with no match (never indexed, or
+// name collides across files) gets 0/0, meaning "no snippet available" for
+// that step, not a wrong or stale range.
+func BuildReadingPath(entrypoints []EntryPoint, callEdges []store.ArchitectureCallEdge, symbols []store.ArchitectureSymbol) []ReadingStep {
+	linesOf := make(map[string][2]int, len(symbols))
+	for _, sym := range symbols {
+		if _, exists := linesOf[sym.Name]; !exists {
+			linesOf[sym.Name] = [2]int{sym.StartLine, sym.EndLine}
+		}
+	}
+
 	fileOf := make(map[string]string)
 	for _, ep := range entrypoints {
 		fileOf[ep.Name] = ep.FilePath
@@ -121,10 +134,14 @@ func BuildReadingPath(entrypoints []EntryPoint, callEdges []store.ArchitectureCa
 			reason = "Entrypoint"
 		}
 
+		lines := linesOf[d.symbol]
+
 		steps = append(steps, ReadingStep{
-			Symbol:   d.symbol,
-			FilePath: fileOf[d.symbol], // empty for symbols never seen as a caller (e.g. stdlib/external calls) - same convention as GraphNode.file_path
-			Reason:   reason,
+			Symbol:    d.symbol,
+			FilePath:  fileOf[d.symbol], // empty for symbols never seen as a caller (e.g. stdlib/external calls) - same convention as GraphNode.file_path
+			Reason:    reason,
+			StartLine: lines[0],
+			EndLine:   lines[1],
 		})
 	}
 

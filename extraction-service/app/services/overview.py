@@ -34,7 +34,7 @@ Representative symbols
 {symbol_lines}
 
 Respond with ONLY a single JSON object, no markdown code fences, no commentary, in exactly this shape:
-{{"narrative_summary": "2-4 sentences describing what this project does and why, written for someone who has never seen it before", "concepts": [{{"term": "short name of a notable pattern, convention, or domain term used in this codebase", "explanation": "1-2 sentence explanation of it, specific to this codebase"}}]}}
+{{"narrative_summary": "2-4 sentences describing what this project does and why, written for someone who has never seen it before", "concepts": [{{"term": "short name of a notable pattern, convention, or domain term used in this codebase", "explanation": "1-2 sentence explanation of it, specific to this codebase", "symbol": "the exact name of one symbol from the Representative symbols list above that best represents this concept, if any genuinely does - omit this field entirely otherwise, never guess or invent a name not in that list"}}]}}
 
 Include at most 5 concepts. Only include concepts that are genuinely non-obvious - skip anything a competent engineer would already recognize on sight."""
 

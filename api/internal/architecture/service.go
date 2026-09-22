@@ -93,7 +93,14 @@ func (s *Service) GenerateOverview(ctx context.Context, repoID, readmeText strin
 
 	concepts := make([]store.Concept, 0, len(resp.Concepts))
 	for _, c := range resp.Concepts {
-		concepts = append(concepts, store.Concept{Term: c.Term, Explanation: c.Explanation})
+		concept := store.Concept{Term: c.Term, Explanation: c.Explanation}
+		if filePath, startLine, endLine, ok := resolveConceptCitation(c.Symbol, files, symbols); ok {
+			concept.Symbol = c.Symbol
+			concept.FilePath = filePath
+			concept.StartLine = startLine
+			concept.EndLine = endLine
+		}
+		concepts = append(concepts, concept)
 	}
 
 	if err := s.store.SaveOverview(ctx, repoID, resp.NarrativeSummary, concepts); err != nil {
@@ -148,6 +155,38 @@ func topLevelDirs(files []store.ArchitectureFile, repoID string) []string {
 	sort.Strings(dirs)
 
 	return dirs
+}
+
+// resolveConceptCitation looks up claimedSymbol (whatever name the LLM
+// named for a concept, possibly empty) against the repo's real, currently
+// indexed symbol table - never the LLM's own claimed location, which could
+// be hallucinated or drifted. Returns ok=false (no citation, not an error)
+// when claimedSymbol is empty, matches nothing, or matches a symbol whose
+// file can't be resolved. Matches on name only, first hit wins - the same
+// simplification BuildReadingPath's fileOf map already makes for a name
+// that exists in more than one file.
+func resolveConceptCitation(claimedSymbol string, files []store.ArchitectureFile, symbols []store.ArchitectureSymbol) (filePath string, startLine, endLine int, ok bool) {
+	if claimedSymbol == "" {
+		return "", 0, 0, false
+	}
+
+	pathOf := make(map[int64]string, len(files))
+	for _, f := range files {
+		pathOf[f.ID] = f.Path
+	}
+
+	for _, sym := range symbols {
+		if sym.Name != claimedSymbol {
+			continue
+		}
+		path, found := pathOf[sym.FileID]
+		if !found {
+			return "", 0, 0, false
+		}
+		return path, sym.StartLine, sym.EndLine, true
+	}
+
+	return "", 0, 0, false
 }
 
 // representativeSymbolStrings caps how many symbols reach the overview

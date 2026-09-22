@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ApiError, getArchitecture, listRepos, listSymbols } from "../api";
+import CodeSnippet from "../components/CodeSnippet";
 import ErrorState from "../components/ErrorState";
 import { SkeletonBlock, SkeletonLine } from "../components/Skeleton";
 import StatReading from "../components/StatReading";
@@ -170,6 +171,12 @@ export default function Overview() {
                     view in graph
                   </button>
                 </div>
+                <CodeSnippet
+                  repoId={repoId!}
+                  filePath={step.file_path}
+                  startLine={step.start_line}
+                  endLine={step.end_line}
+                />
               </li>
             ))}
           </ol>
@@ -210,6 +217,14 @@ export default function Overview() {
                   </button>
                 </div>
                 <p className="text-xs text-ink-faint">{concept.explanation}</p>
+                {concept.file_path && concept.start_line && concept.end_line && (
+                  <CodeSnippet
+                    repoId={repoId!}
+                    filePath={concept.file_path}
+                    startLine={concept.start_line}
+                    endLine={concept.end_line}
+                  />
+                )}
               </li>
             ))}
           </ul>

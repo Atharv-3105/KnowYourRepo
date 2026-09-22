@@ -39,8 +39,15 @@ type EntryPoint struct {
 
 // Concept is a notable pattern/convention/domain term the LLM-generated
 // overview flagged as worth explaining to a newcomer - see
-// architecture.Service.GenerateOverview.
+// architecture.Service.GenerateOverview. Symbol/FilePath/StartLine/EndLine
+// are optional (zero values when absent) - set only when the concept was
+// resolved to a real, currently-indexed symbol, never trusted directly
+// from the LLM's own claimed location.
 type Concept struct {
 	Term        string `json:"term"`
 	Explanation string `json:"explanation"`
+	Symbol      string `json:"symbol,omitempty"`
+	FilePath    string `json:"file_path,omitempty"`
+	StartLine   int    `json:"start_line,omitempty"`
+	EndLine     int    `json:"end_line,omitempty"`
 }

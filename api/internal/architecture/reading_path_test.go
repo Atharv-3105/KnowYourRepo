@@ -14,8 +14,11 @@ func TestBuildReadingPath_BFSFromEntrypoint(t *testing.T) {
 		{CallerSymbol: "main", CallerFilePath: "cmd/server/main.go", CalleeeSymbol: "NewServer"},
 		{CallerSymbol: "NewServer", CallerFilePath: "internal/api/server.go", CalleeeSymbol: "registerRoutes"},
 	}
+	symbols := []store.ArchitectureSymbol{
+		{Name: "NewServer", Type: "function", StartLine: 10, EndLine: 25},
+	}
 
-	steps := BuildReadingPath(entrypoints, callEdges)
+	steps := BuildReadingPath(entrypoints, callEdges, symbols)
 
 	if len(steps) != 3 {
 		t.Fatalf("expected 3 steps (main, NewServer, registerRoutes), got %d: %+v", len(steps), steps)
@@ -30,8 +33,16 @@ func TestBuildReadingPath_BFSFromEntrypoint(t *testing.T) {
 	if steps[1].Symbol != "NewServer" {
 		t.Errorf("expected NewServer at depth 1, got %+v", steps[1])
 	}
+	if steps[1].StartLine != 10 || steps[1].EndLine != 25 {
+		t.Errorf("expected NewServer's line range resolved from the symbols list, got start=%d end=%d", steps[1].StartLine, steps[1].EndLine)
+	}
 	if steps[2].Symbol != "registerRoutes" {
 		t.Errorf("expected registerRoutes at depth 2, got %+v", steps[2])
+	}
+	// registerRoutes has no matching symbols entry (not indexed in this
+	// fixture) - must degrade to zero, not a stale/wrong range.
+	if steps[2].StartLine != 0 || steps[2].EndLine != 0 {
+		t.Errorf("expected registerRoutes to have no line range (no matching symbol), got start=%d end=%d", steps[2].StartLine, steps[2].EndLine)
 	}
 }
 
@@ -45,7 +56,7 @@ func TestBuildReadingPath_RanksByCallerCount(t *testing.T) {
 		{CallerSymbol: "other", CallerFilePath: "other.go", CalleeeSymbol: "helperB"},
 	}
 
-	steps := BuildReadingPath(entrypoints, callEdges)
+	steps := BuildReadingPath(entrypoints, callEdges, nil)
 
 	helperAIdx, helperBIdx := -1, -1
 	for i, s := range steps {
@@ -76,7 +87,7 @@ func TestBuildReadingPath_NoEntrypointsFallsBackToCallerRanking(t *testing.T) {
 		{CallerSymbol: "otherCaller", CallerFilePath: "other.go", CalleeeSymbol: "helper"},
 	}
 
-	steps := BuildReadingPath(nil, callEdges)
+	steps := BuildReadingPath(nil, callEdges, nil)
 
 	if len(steps) == 0 {
 		t.Fatal("expected a non-empty fallback reading path when there are call edges but no entrypoints")
@@ -113,7 +124,7 @@ func TestBuildReadingPath_CapsAtTwelveSteps(t *testing.T) {
 		prev = next
 	}
 
-	steps := BuildReadingPath(entrypoints, callEdges)
+	steps := BuildReadingPath(entrypoints, callEdges, nil)
 
 	if len(steps) > 12 {
 		t.Errorf("expected at most 12 steps, got %d", len(steps))
@@ -127,7 +138,7 @@ func TestBuildReadingPath_HandlesCyclesWithoutInfiniteLoop(t *testing.T) {
 		{CallerSymbol: "b", CallerFilePath: "b.go", CalleeeSymbol: "a"}, // cycle back to a
 	}
 
-	steps := BuildReadingPath(entrypoints, callEdges)
+	steps := BuildReadingPath(entrypoints, callEdges, nil)
 
 	if len(steps) != 2 {
 		t.Fatalf("expected exactly 2 steps (a, b) despite the cycle, got %d: %+v", len(steps), steps)

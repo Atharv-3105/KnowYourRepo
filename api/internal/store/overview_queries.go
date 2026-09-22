@@ -9,9 +9,19 @@ import (
 	"time"
 )
 
+// Symbol/FilePath/StartLine/EndLine are all optional (zero values when
+// absent) - set only when the concept could be resolved to a real,
+// currently-indexed symbol. See architecture.Service.GenerateOverview for
+// how that resolution happens (the LLM names a symbol; the backend looks
+// it up against the real index rather than trusting any location the LLM
+// might claim directly).
 type Concept struct {
 	Term        string `json:"term"`
 	Explanation string `json:"explanation"`
+	Symbol      string `json:"symbol,omitempty"`
+	FilePath    string `json:"file_path,omitempty"`
+	StartLine   int    `json:"start_line,omitempty"`
+	EndLine     int    `json:"end_line,omitempty"`
 }
 
 type Overview struct {

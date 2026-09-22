@@ -94,12 +94,23 @@ export interface ArchitectureComponent {
 export interface ArchitectureConcept {
   term: string;
   explanation: string;
+  // Optional - present only when the concept was resolved to a real,
+  // currently-indexed symbol (the LLM's own claimed location is never
+  // trusted directly - see architecture.Service.GenerateOverview).
+  symbol?: string;
+  file_path?: string;
+  start_line?: number;
+  end_line?: number;
 }
 
 export interface ArchitectureReadingStep {
   symbol: string;
   file_path: string;
   reason: string;
+  // 0 when no matching symbol was found in the index (e.g. an external/
+  // stdlib call) - not a real line range, don't try to fetch a snippet.
+  start_line: number;
+  end_line: number;
 }
 
 export interface ArchitectureSummary {
