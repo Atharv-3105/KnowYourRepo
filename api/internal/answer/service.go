@@ -170,9 +170,30 @@ func (s *Service) triggerBackgroundSync(repoID string) {
 func overviewAsResult(repoID string, summary *architecture.Summary) retrieval.RetrievalResult {
 	var b strings.Builder
 
+	// The narrative summary/concepts are LLM-generated once at ingestion
+	// (architecture.Service.GenerateOverview) and already shown on the
+	// Overview page - this is the single best "what is this project" text
+	// the system produces, and previously never reached Chat's own context
+	// at all. Both are empty (not shown) for a repo where generation never
+	// ran or failed - see architecture.Summary's own degrade-gracefully
+	// convention.
+	if summary.NarrativeSummary != "" {
+		fmt.Fprintf(&b, "Summary: %s\n", summary.NarrativeSummary)
+	}
+
 	fmt.Fprintf(&b, "Repository statistics: %d files, %d symbols, %d call edges.\n",
 		summary.Statistics.FileCount, summary.Statistics.SymbolCount, summary.Statistics.CallEdges)
 	fmt.Fprintf(&b, "Languages: %s\n", strings.Join(summary.Languages, ", "))
+
+	if len(summary.Concepts) > 0 {
+		b.WriteString("Notable concepts:\n")
+		for i, c := range summary.Concepts {
+			if i >= maxArchitectureListItems {
+				break
+			}
+			fmt.Fprintf(&b, "- %s: %s\n", c.Term, c.Explanation)
+		}
+	}
 
 	b.WriteString("EntryPoints:\n")
 	for i, ep := range summary.EntryPoints {

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -209,5 +210,57 @@ func TestService_Answer_TriggersBackgroundSyncOnFreshnessQuestion(t *testing.T) 
 		}
 	case <-time.After(2 * time.Second):
 		t.Error("expected background sync to be triggered")
+	}
+}
+
+// TestOverviewAsResult_IncludesNarrativeSummaryAndConcepts covers a real
+// gap: architecture.Service.GenerateOverview already produces a narrative
+// summary and notable concepts (shown on the Overview page), but
+// overviewAsResult - the function that turns an architecture.Summary into
+// context Chat's LLM actually sees - never included them, hand-building
+// its context block from raw stats/entrypoints/components only. So the
+// single best "what is this project" text the system has ever generated
+// was invisible to the one feature most people actually ask that question
+// in.
+func TestOverviewAsResult_IncludesNarrativeSummaryAndConcepts(t *testing.T) {
+	summary := &architecture.Summary{
+		RepoID: "repo_test",
+		Statistics: architecture.Statistics{
+			FileCount: 10, SymbolCount: 50, CallEdges: 80,
+		},
+		Languages:        []string{"go"},
+		NarrativeSummary: "This project ingests repositories and answers questions about them.",
+		Concepts: []architecture.Concept{
+			{Term: "Worker pool", Explanation: "internal/worker.Pool processes ingestion jobs concurrently."},
+		},
+	}
+
+	result := overviewAsResult("repo_test", summary)
+
+	if !strings.Contains(result.Document, summary.NarrativeSummary) {
+		t.Errorf("expected Document to contain the narrative summary, got: %q", result.Document)
+	}
+	if !strings.Contains(result.Document, "Worker pool") || !strings.Contains(result.Document, "internal/worker.Pool processes ingestion jobs concurrently.") {
+		t.Errorf("expected Document to contain the concept term and explanation, got: %q", result.Document)
+	}
+}
+
+// TestOverviewAsResult_OmitsEmptySections covers the degrade-gracefully
+// case: a repo whose overview generation never ran (or failed) has empty
+// NarrativeSummary/Concepts - the built context must not show empty
+// headers or literal "no narrative available" filler for those.
+func TestOverviewAsResult_OmitsEmptySections(t *testing.T) {
+	summary := &architecture.Summary{
+		RepoID:     "repo_test",
+		Statistics: architecture.Statistics{FileCount: 1},
+	}
+
+	result := overviewAsResult("repo_test", summary)
+
+	if strings.Contains(strings.ToLower(result.Document), "narrative") {
+		t.Errorf("expected no narrative section when NarrativeSummary is empty, got: %q", result.Document)
+	}
+	if strings.Contains(strings.ToLower(result.Document), "concept") {
+		t.Errorf("expected no concepts section when Concepts is empty, got: %q", result.Document)
 	}
 }
