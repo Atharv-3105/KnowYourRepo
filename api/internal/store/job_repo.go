@@ -12,6 +12,8 @@ type IngestionJob  struct {
 	Status 		string
 	ErrorMessage	*string
 	Stage		*string
+	ParseStatus	*string
+	EmbedStatus	*string
 }
 
 const (
@@ -19,6 +21,10 @@ const (
 	JobStatusProcessing = "processing"
 	JobStatusCompleted = "completed"
 	JobStatusFailed = "failed"
+	// JobStatusSkipped is only ever set on ParseStatus/EmbedStatus (not the
+	// job's own overall status) - e.g. an incremental sync where no files
+	// changed, so there was nothing to embed.
+	JobStatusSkipped = "skipped"
 )
 
 // Stage values mirror the real, sequential phases ingestRepository actually
@@ -46,6 +52,8 @@ func(s *Store) InsertJob(ctx context.Context, jobID, repoURL string) error {
 		repo_url = EXCLUDED.repo_url,
 		status = EXCLUDED.status,
 		error_message = NULL,
+		parse_status = NULL,
+		embed_status = NULL,
 		updated_at = now()
 	`
 
@@ -74,19 +82,55 @@ func(s *Store) UpdateJobStatus(ctx context.Context, jobID, status string, errMsg
 
 func(s *Store) GetJob(ctx context.Context, jobID string) (*IngestionJob, error){
 	query := `
-	SELECT id, repo_url, status, error_message, stage
+	SELECT id, repo_url, status, error_message, stage, parse_status, embed_status
 	FROM ingestion_jobs
 	WHERE id = $1
 	`
 
 	var job IngestionJob
 
-	err := s.db.QueryRowContext(ctx, query, jobID).Scan(&job.ID, &job.RepoURL, &job.Status, &job.ErrorMessage, &job.Stage)
+	err := s.db.QueryRowContext(ctx, query, jobID).Scan(&job.ID, &job.RepoURL, &job.Status, &job.ErrorMessage, &job.Stage, &job.ParseStatus, &job.EmbedStatus)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get ingestion job: %w", err)
 	}
 
 	return &job, nil
+}
+
+// SetParseStatus records whether the parsing/symbol/call-graph-extraction
+// phase completed - independent of the job's overall status and of
+// embedding's outcome. See the schema.sql comment on these columns for why
+// they're tracked separately.
+func(s *Store) SetParseStatus(ctx context.Context, jobID, status string) error {
+	query := `
+	UPDATE ingestion_jobs
+	SET parse_status = $1, updated_at = now()
+	WHERE id = $2
+	`
+
+	_, err := s.db.ExecContext(ctx, query, status, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to update ingestion job parse_status: %w", err)
+	}
+
+	return nil
+}
+
+// SetEmbedStatus records whether the embedding phase completed, failed, or
+// was skipped (nothing to embed) - independent of the job's overall status.
+func(s *Store) SetEmbedStatus(ctx context.Context, jobID, status string) error {
+	query := `
+	UPDATE ingestion_jobs
+	SET embed_status = $1, updated_at = now()
+	WHERE id = $2
+	`
+
+	_, err := s.db.ExecContext(ctx, query, status, jobID)
+	if err != nil {
+		return fmt.Errorf("failed to update ingestion job embed_status: %w", err)
+	}
+
+	return nil
 }
 
 // UpdateJobStage records which real phase of the ingestion pipeline a job

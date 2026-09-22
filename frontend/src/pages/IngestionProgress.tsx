@@ -106,6 +106,19 @@ export default function IngestionProgress() {
               <p className="text-sm text-danger">{data.error_message}</p>
             )}
 
+            {/* A completed job can still have a failed embed_status (e.g.
+                the embedding provider's rate limit was hit) - the repo is
+                genuinely usable (browsable, has a call graph, Chat still
+                works via lexical/graph-fallback retrieval), just without
+                semantic search until the next sync retries embedding. Said
+                plainly rather than hidden behind a flat "Ready" badge. */}
+            {data.status === "completed" && data.embed_status === "failed" && (
+              <p className="text-sm text-ink-dim">
+                Repository is ready, but semantic search isn&apos;t available yet - embedding
+                failed (the provider may be rate-limited). It will retry on the next sync.
+              </p>
+            )}
+
             {data.status === "completed" && (
               <div>
                 <Link

@@ -27,12 +27,23 @@ export type JobStatus = "pending" | "processing" | "completed" | "failed";
 // job up, since a queued-but-not-yet-started job has no stage yet.
 export type JobStage = "cloning" | "walking" | "parsing" | "embedding" | "done";
 
+// Independent phase-level outcomes (api/internal/store/job_repo.go),
+// separate from the job's overall status - a job can be "completed"
+// overall (parsing succeeded, the repo is genuinely usable) while
+// embed_status is "failed" (e.g. the embedding provider's rate limit was
+// hit). "skipped" (embed_status only) means an incremental sync found no
+// changed files, so there was nothing to embed. null means that phase
+// never ran at all (e.g. the job never got past cloning/walking).
+export type JobPhaseStatus = "completed" | "failed" | "skipped";
+
 export interface JobStatusResponse {
   job_id: string;
   repo_url: string;
   status: JobStatus;
   error_message: string | null;
   stage: JobStage | null;
+  parse_status: JobPhaseStatus | null;
+  embed_status: JobPhaseStatus | null;
 }
 
 // A job is done polling once it reaches either terminal state.

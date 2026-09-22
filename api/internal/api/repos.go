@@ -366,6 +366,16 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 
 	h.logger.Info("incremental_diff_complete", "processed", processed, "skipped", skipped, "deleted", len(existing)-len(seenPaths))
 
+	// Parsing/symbol/call-graph extraction just finished, unconditionally -
+	// if we've reached this point, the repo already has real, usable
+	// structural data (browsable, has a call graph, Chat still works via
+	// lexical/graph-fallback retrieval) regardless of what embedding does
+	// next. Tracked independently of the job's overall status - see the
+	// schema.sql comment on parse_status/embed_status for why.
+	if err := h.store.SetParseStatus(ctx, jobID, store.JobStatusCompleted); err != nil {
+		h.logger.Error("failed to set job parse_status", "job_id", jobID, "error", err)
+	}
+
 	if err := h.store.UpdateJobStage(ctx, jobID, store.StageEmbedding); err != nil {
 		h.logger.Error("failed to mark job stage embedding", "job_id", jobID, "error", err)
 	}
@@ -374,9 +384,24 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 
 		h.logger.Info("sending batch embeddings", "count", len(embedItems))
 
+		// Non-fatal, deliberately: previously this returned early on any
+		// embedding failure (e.g. the embedding provider's rate limit),
+		// which meant the whole job was reported "failed" even though
+		// parsing above already succeeded and the repo's symbols/call-graph
+		// were already committed - a real, usable repo reported as if
+		// ingestion never happened. It also meant GenerateOverview below,
+		// which doesn't actually depend on embeddings, silently never ran.
+		// embed_status carries the real, separate outcome instead.
 		if err := h.sidecar.Embed(ctx, sidecar.EmbedBatchRequest{Items: embedItems}); err != nil {
-			return fmt.Errorf("batch embedding failed: %w", err)
+			h.logger.Warn("batch_embedding_failed", "repo_id", repoID, "error", err)
+			if statusErr := h.store.SetEmbedStatus(ctx, jobID, store.JobStatusFailed); statusErr != nil {
+				h.logger.Error("failed to set job embed_status", "job_id", jobID, "error", statusErr)
+			}
+		} else if err := h.store.SetEmbedStatus(ctx, jobID, store.JobStatusCompleted); err != nil {
+			h.logger.Error("failed to set job embed_status", "job_id", jobID, "error", err)
 		}
+	} else if err := h.store.SetEmbedStatus(ctx, jobID, store.JobStatusSkipped); err != nil {
+		h.logger.Error("failed to set job embed_status", "job_id", jobID, "error", err)
 	}
 
 	//Save IR File Representation

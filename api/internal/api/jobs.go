@@ -21,6 +21,8 @@ func(h *RepoHandler) GetJobStatus(c *gin.Context) {
 		"status": job.Status,
 		"error_message": job.ErrorMessage,
 		"stage": job.Stage,
+		"parse_status": job.ParseStatus,
+		"embed_status": job.EmbedStatus,
 	})
 }
 

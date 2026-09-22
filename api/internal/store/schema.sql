@@ -62,7 +62,7 @@ ALTER TABLE files ADD COLUMN IF NOT EXISTS hash TEXT;
 ALTER TABLE symbols DROP CONSTRAINT IF EXISTS symbols_file_id_fkey;
 ALTER TABLE symbols ADD CONSTRAINT symbols_file_id_fkey FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE;
 
--- call_edges had no indexes at all; the bounded call-graph traversal (Phase 5 Brick 3)
+-- call_edges had no indexes at all; the bounded call-graph traversal
 -- filters by repo_id and joins repeatedly on caller_symbol/callee_symbol per recursion
 -- step, which would otherwise be a full table scan on every hop.
 CREATE INDEX IF NOT EXISTS idx_call_edges_repo_caller ON call_edges(repo_id, caller_symbol);
@@ -83,3 +83,15 @@ CREATE TABLE IF NOT EXISTS repo_overview (
     concepts          JSONB,
     generated_at      TIMESTAMPTZ
 );
+
+-- Independent phase-level outcomes, separate from the job's overall status.
+-- A repo whose parsing/call-graph extraction completed is genuinely usable
+-- (browsable, has a call graph, Chat still works via lexical/graph-fallback
+-- retrieval) even if embedding subsequently failed (e.g. an embedding
+-- provider rate limit) - the old single status column couldn't represent
+-- that and reported a flat "failed" that hid real, usable data. NULL means
+-- that phase never ran (e.g. the job never got past cloning/walking).
+-- 'skipped' (embed_status only) covers an incremental sync where no files
+-- changed, so there was nothing to embed.
+ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS parse_status TEXT;
+ALTER TABLE ingestion_jobs ADD COLUMN IF NOT EXISTS embed_status TEXT;
