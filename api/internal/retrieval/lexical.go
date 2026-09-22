@@ -3,7 +3,9 @@ package retrieval
 import (
 	"context"
 	"fmt"
+	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/store"
@@ -11,6 +13,41 @@ import (
 
 const maxLexicalCandidates = 5
 const maxLexicalResults = 5
+
+// maxLexicalSnippetLines caps how much source readSymbolSource will return
+// for one symbol - token-budget hygiene, matching the same reasoning
+// applied to the overview-generation prompt elsewhere in this codebase.
+const maxLexicalSnippetLines = 60
+
+// readSymbolSource reads a symbol's real source lines from its file on
+// disk (FilePath is already the absolute on-disk clone path - see the
+// codebase-wide convention documented in frontend/src/lib/path.ts). Returns
+// ("", false) on any failure (file missing, line range out of bounds after
+// the file changed on disk, etc.) - callers fall back to the location-stub
+// text rather than failing the whole lookup over one unreadable file.
+func readSymbolSource(filePath string, startLine, endLine int) (string, bool) {
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", false
+	}
+
+	lines := strings.Split(string(content), "\n")
+
+	if startLine < 1 || startLine > len(lines) {
+		return "", false
+	}
+	if endLine < startLine {
+		endLine = startLine
+	}
+	if endLine > len(lines) {
+		endLine = len(lines)
+	}
+	if endLine-startLine+1 > maxLexicalSnippetLines {
+		endLine = startLine + maxLexicalSnippetLines - 1
+	}
+
+	return strings.Join(lines[startLine-1:endLine], "\n"), true
+}
 
 // dottedIdentifierPattern matches qualified names like "asyncio.create_task"
 // as a single token - tried before the plain pattern below so a dotted call
@@ -94,6 +131,19 @@ func (r *HybridRetriever) LexicalSearch(ctx context.Context, repoID, query strin
 			r.logger.Warn("lexical_symbol_lookup_failed", "candidate", candidate, "error", err)
 		}
 
+		// ListSymbols returns matches in file/line order, not relevance
+		// order - an exact match on the searched identifier (e.g.
+		// "HandleWord") is what the question actually asked about and must
+		// survive the maxLexicalResults cap ahead of a merely-substring
+		// match (e.g. "TestRoom_HandleWord_EmptyWordRejected"). Stable sort
+		// preserves the original file/line order as the tiebreak within
+		// each group.
+		sort.SliceStable(syms, func(i, j int) bool {
+			iExact := strings.EqualFold(syms[i].Name, candidate)
+			jExact := strings.EqualFold(syms[j].Name, candidate)
+			return iExact && !jExact
+		})
+
 		for _, sym := range syms {
 			if len(results) >= maxLexicalResults {
 				break
@@ -105,10 +155,15 @@ func (r *HybridRetriever) LexicalSearch(ctx context.Context, repoID, query strin
 			}
 			seen[key] = true
 
+			document := fmt.Sprintf("%s is a %s defined at %s, lines %d-%d.", sym.Name, sym.Type, sym.FilePath, sym.StartLine, sym.EndLine)
+			if source, ok := readSymbolSource(sym.FilePath, sym.StartLine, sym.EndLine); ok {
+				document = source
+			}
+
 			results = append(results, RetrievalResult{
 				Symbol:   sym.Name,
 				FilePath: sym.FilePath,
-				Document: fmt.Sprintf("%s is a %s defined at %s, lines %d-%d.", sym.Name, sym.Type, sym.FilePath, sym.StartLine, sym.EndLine),
+				Document: document,
 				Metadata: map[string]interface{}{"start_line": float64(sym.StartLine), "end_line": float64(sym.EndLine)},
 				Origin:   "lexical",
 			})
