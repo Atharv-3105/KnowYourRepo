@@ -1,6 +1,6 @@
 import os 
 from dotenv import load_dotenv
-from groq import AsyncGroq, APIStatusError, APIConnectionError, RateLimitError
+from groq import AsyncGroq, APIStatusError, RateLimitError
 from app.providers.errors import ProviderError
 from app.providers.base import LLMProvider
 

@@ -1,65 +1,83 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
-import traceback 
-from app.models.embed import EmbedBatchRequest, EmbedBatchResponse, DeleteEmbeddingsRequest, DeleteEmbeddingsResponse
-from app.vectorstore.pgvector_store import PgVectorStore
-from app.providers.factory import get_embed_provider
+from fastapi.responses import JSONResponse
+
+from app.models.embed import EmbedBatchRequest, EmbedBatchResponse, DeleteEmbeddingsRequest, DeleteEmbeddingsResponse, EmbedInfoResponse
+from app.providers.factory import get_embed_provider, get_vector_store
+from app.providers.openrouter_embed_provider import EmbeddingQuotaExceeded
 
 router = APIRouter()
+logger = logging.getLogger("embed")
 
 provider = get_embed_provider()
-store = PgVectorStore()
+store = get_vector_store()
 
-CHROMA_BATCH_SIZE = 128
+
+def quota_exceeded_response(e: EmbeddingQuotaExceeded) -> JSONResponse:
+    # 429 + Retry-After lets the Go API tell "try again tomorrow" apart from
+    # a real failure, without having to parse error strings.
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "embedding quota exhausted", "retry_after_seconds": e.retry_after},
+        headers={"Retry-After": str(e.retry_after)},
+    )
+
+
+@router.get("/embed/info", response_model=EmbedInfoResponse)
+async def embed_info() -> EmbedInfoResponse:
+    """The model currently producing embeddings. The Go API records this per
+    file, so switching models makes it re-embed instead of mixing vectors
+    from two incompatible models."""
+    return EmbedInfoResponse(
+        provider="openrouter",
+        model=provider.model,
+        dimension=provider.dimension,
+        **provider.quota_status(),
+    )
+
 
 @router.post("/embed/batch", response_model = EmbedBatchResponse)
-async def embed_batch(request: EmbedBatchRequest)-> EmbedBatchResponse:
-    
+async def embed_batch(request: EmbedBatchRequest):
+
+    if not request.items:
+        return EmbedBatchResponse(success=True, count=0, model=provider.model)
+
     try:
-        
-        CHUNK_SIZE = 32
-        
-        total = len(request.items)
-        
-        for i in range(0, total, CHUNK_SIZE):
-            
-            batch = request.items[i : i + CHUNK_SIZE]
-            
-            texts = [item.text for item in batch]
-            
-            ids = [item.id for item in batch]
-            
-            metadatas = [item.metadata for item in batch]
-            
-            embeddings = await provider.embed_batch(texts)
-            
-            if len(embeddings) != len(ids):
-                raise RuntimeError(f"embedding count mismatch: {len(embeddings)} != {len(ids)}")
-            
-            await store.add_documents(
-                ids = ids,
-                embeddings = embeddings,
-                documents = texts,
-                metadatas = metadatas,
-            )
-            
-        return EmbedBatchResponse(success=True, count = total)
-        
-    except Exception as e:
-        
-        traceback.print_exc()
-        
-        raise HTTPException(
-            status_code=500,
-            detail = repr(e),
+        texts = [item.text for item in request.items]
+
+        # The provider batches internally (one OpenRouter request per
+        # openrouter_embed_batch_size texts) - splitting further here would
+        # only spend more of a per-request daily quota.
+        embeddings = await provider.embed_documents(texts)
+
+        if len(embeddings) != len(request.items):
+            raise RuntimeError(f"embedding count mismatch: {len(embeddings)} != {len(request.items)}")
+
+        await store.add_documents(
+            ids = [item.id for item in request.items],
+            embeddings = embeddings,
+            documents = texts,
+            metadatas = [item.metadata for item in request.items],
         )
-        
+
+        return EmbedBatchResponse(success=True, count = len(request.items), model=provider.model)
+
+    except EmbeddingQuotaExceeded as e:
+        logger.warning("embed_batch quota exhausted, retry_after=%ss", e.retry_after)
+        return quota_exceeded_response(e)
+
+    except Exception:
+        logger.exception("embed_batch failed")
+        raise HTTPException(status_code=502, detail="embedding failed")
+
 @router.delete("/embed", response_model = DeleteEmbeddingsResponse)
 async def delete_embeddings(request: DeleteEmbeddingsRequest) -> DeleteEmbeddingsResponse:
-    
+
     try:
         deleted = await store.delete_by_file(request.repo_id, request.file_path)
         return DeleteEmbeddingsResponse(success = True, deleted = deleted)
-    
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code = 500, detail = repr(e))
+
+    except Exception:
+        logger.exception("delete_embeddings failed")
+        raise HTTPException(status_code = 500, detail = "failed to delete embeddings")

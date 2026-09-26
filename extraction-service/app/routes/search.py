@@ -1,36 +1,40 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from app.models.search import SearchRequest, SearchResult
-from app.providers.factory import get_embed_provider
-from app.vectorstore.pgvector_store import PgVectorStore
+from app.providers.factory import get_embed_provider, get_vector_store
+from app.providers.openrouter_embed_provider import EmbeddingQuotaExceeded
+from app.routes.embed import quota_exceeded_response
 
 router = APIRouter()
+logger = logging.getLogger("search")
 
 provider = get_embed_provider()
-store = PgVectorStore()
+store = get_vector_store()
 
 @router.post("/search", response_model=list[SearchResult])
 async def search(request: SearchRequest):
-    
+
     try:
-        query_embedding = await provider.embed(request.query)
-        
+        query_embedding = await provider.embed_query(request.query)
+
         raw_results = await store.search(
             query_embedding=query_embedding,
             repo_id  = request.repo_id,
             limit = request.limit,
         )
-        
+
         ids = raw_results.get("ids", [[]])[0]
         documents = raw_results.get("documents", [[]])[0]
         metadatas = raw_results.get("metadatas", [[]])[0]
         distances = raw_results.get("distances", [[]])[0]
-        
-        #Declare results as an empty List which follows SearchResult model 
+
+        #Declare results as an empty List which follows SearchResult model
         results: list[SearchResult] = []
-        
+
         for i in range(len(ids)):
-            
+
             results.append(
                 SearchResult(
                     id = ids[i],
@@ -39,11 +43,13 @@ async def search(request: SearchRequest):
                     distance = distances[i],
                 )
             )
-        
+
         return results
-    
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail = str(e),
-        )
+
+    except EmbeddingQuotaExceeded as e:
+        # The Go API falls back to lexical retrieval on any search failure.
+        return quota_exceeded_response(e)
+
+    except Exception:
+        logger.exception("search failed")
+        raise HTTPException(status_code=502, detail="semantic search failed")

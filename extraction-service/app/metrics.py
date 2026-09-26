@@ -15,3 +15,12 @@ LLM_ROUTER_TOKENS_TOTAL = Counter(
     "Total tokens consumed per LLM provider, only counted on successful completions.",
     ["provider"],
 )
+
+# Embedding provider requests. Free-tier embedding quotas are counted per
+# request, so this is the number to watch: cache_hit is a query embedding
+# served without spending one, quota_exhausted means the daily cap was hit.
+EMBED_REQUESTS_TOTAL = Counter(
+    "embed_requests_total",
+    "Embedding provider requests, labeled by kind (query/document) and outcome.",
+    ["kind", "outcome"],
+)

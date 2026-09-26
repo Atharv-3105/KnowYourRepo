@@ -11,6 +11,7 @@ class EmbedBatchRequest(BaseModel):
 class EmbedBatchResponse(BaseModel):
     success: bool
     count:  int
+    model:  str = ""
     
 class DeleteEmbeddingsRequest(BaseModel):
     repo_id:    str 
@@ -21,3 +22,11 @@ class DeleteEmbeddingsResponse(BaseModel):
     deleted:    int 
     
     
+class EmbedInfoResponse(BaseModel):
+    provider:   str
+    model:      str
+    dimension:  int
+    daily_limit:    int = 0
+    daily_used:     int = 0
+    exhausted:      bool = False
+    retry_after_seconds:    int = 0

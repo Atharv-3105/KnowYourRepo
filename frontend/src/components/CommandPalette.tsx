@@ -32,6 +32,12 @@ export default function CommandPalette({ repoId, open, onOpenChange }: CommandPa
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const debouncedQuery = useDebouncedValue(query, 250);
+  // Semantic search embeds the query - one request against a free embedding
+  // quota of ~50/day - so it waits for a real pause and only runs for
+  // natural-language queries. Identifier lookups are already covered, as you
+  // type, by the symbol search above it (a plain database query).
+  const semanticQuery = useDebouncedValue(query, 900).trim();
+  const wantsSemantic = semanticQuery.length >= 8 && semanticQuery.includes(" ");
 
   const reposQuery = useQuery({ queryKey: ["repos"], queryFn: listRepos });
 
@@ -42,9 +48,11 @@ export default function CommandPalette({ repoId, open, onOpenChange }: CommandPa
   });
 
   const searchResults = useQuery({
-    queryKey: ["search", repoId, debouncedQuery],
-    queryFn: () => search(repoId, debouncedQuery),
-    enabled: open && debouncedQuery.length >= 3,
+    queryKey: ["search", repoId, semanticQuery],
+    queryFn: () => search(repoId, semanticQuery),
+    enabled: open && wantsSemantic,
+    staleTime: Infinity,
+    retry: false,
   });
 
   const go = (path: string) => {
@@ -126,7 +134,7 @@ export default function CommandPalette({ repoId, open, onOpenChange }: CommandPa
             </Command.Group>
           )}
 
-          {debouncedQuery.length >= 3 && searchResults.data && searchResults.data.entries && searchResults.data.entries.length > 0 && (
+          {wantsSemantic && searchResults.data && searchResults.data.entries && searchResults.data.entries.length > 0 && (
             <Command.Group heading="Semantic search" className="px-2 text-xs text-ink-dim [&_[cmdk-group-heading]]:mb-1">
               {searchResults.data.entries.map((entry, i) => (
                 <Command.Item
