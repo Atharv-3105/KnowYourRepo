@@ -17,7 +17,7 @@ func(s *Store) InsertFile(ctx context.Context, repoID, path, language, hash stri
 	query := `
 	INSERT INTO files (repo_id, path, language, hash)
 	VALUES ($1, $2, $3, $4)
-	ON CONFLICT (repo_id, path) DO UPDATE SET language = EXCLUDED.language, hash = EXCLUDED.hash
+	ON CONFLICT (repo_id, path) DO UPDATE SET language = EXCLUDED.language, hash = EXCLUDED.hash, embedded_model = NULL
 	RETURNING id
 	`
 

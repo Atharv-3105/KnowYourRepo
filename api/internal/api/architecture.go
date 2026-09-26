@@ -28,14 +28,8 @@ func(h *RepoHandler) GetArchitecture(c *gin.Context) {
 	summary, err := h.architectureService.BuildSummary(c.Request.Context(), repoID)
 
 	if err != nil {
-
-		h.logger.Error("architecture_request_failed", "repo_id", repoID, "error", err)
-
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
-		})
-
-		return 
+		respondInternalError(c, h.logger, "architecture_request_failed", err, "repo_id", repoID)
+		return
 	}
 	
 	h.logger.Info("architecture_request_completed", "repo_id", repoID)

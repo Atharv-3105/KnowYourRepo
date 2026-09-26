@@ -6,7 +6,7 @@ func BuildConversationContext(messages []Message) string {
 
 	var b strings.Builder
 
-	for _, msg := range messages{
+	for _, msg := range messages {
 
 		b.WriteString(msg.Role)
 		b.WriteString(": ")

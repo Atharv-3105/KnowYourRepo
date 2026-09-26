@@ -28,16 +28,16 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 		)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, 
-											   http.MethodPost,
-											   c.baseURL + "/chat",
-												bytes.NewBuffer(body))
+	httpReq, err := http.NewRequestWithContext(ctx,
+		http.MethodPost,
+		c.baseURL+"/chat",
+		bytes.NewBuffer(body))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create chat request: %w", err)
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	setRequestIDHeader(httpReq, ctx)
+	c.setHeaders(httpReq, ctx)
 
 	resp, err := c.httpClient.Do(httpReq)
 
@@ -47,7 +47,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest) (*ChatResponse, erro
 
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK{
+	if resp.StatusCode != http.StatusOK {
 
 		respBody, _ := io.ReadAll(resp.Body)
 

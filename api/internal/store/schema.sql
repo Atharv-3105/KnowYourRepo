@@ -58,6 +58,11 @@ CREATE INDEX IF NOT EXISTS idx_edges_to ON edges(to_symbol_id);
 ALTER TABLE repositories ADD COLUMN IF NOT EXISTS last_commit_sha TEXT;
 ALTER TABLE repositories ADD COLUMN IF NOT EXISTS last_checked_at TIMESTAMPTZ;
 ALTER TABLE files ADD COLUMN IF NOT EXISTS hash TEXT;
+-- The embedding model this file's chunks were embedded with (NULL = not
+-- embedded yet). Lets ingestion resume embedding that a quota or budget cut
+-- short, and re-embed everything when the model changes - see
+-- api.RepoHandler.ingestRepository.
+ALTER TABLE files ADD COLUMN IF NOT EXISTS embedded_model TEXT;
 
 ALTER TABLE symbols DROP CONSTRAINT IF EXISTS symbols_file_id_fkey;
 ALTER TABLE symbols ADD CONSTRAINT symbols_file_id_fkey FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE CASCADE;

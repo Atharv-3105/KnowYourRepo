@@ -114,3 +114,36 @@ func TestReadReadme_TruncatesLongReadme(t *testing.T) {
 		t.Errorf("expected truncation to %d chars, got %d", maxReadmeChars, len(got))
 	}
 }
+func TestWalkRepo_RespectsLimits(t *testing.T) {
+	dir := t.TempDir()
+	w := NewWalker(slog.New(slog.NewTextHandler(io.Discard, nil))).WithLimits(3, 100)
+
+	// 5 small files - only 3 should be returned (maxFiles).
+	for i := 0; i < 5; i++ {
+		name := filepath.Join(dir, "f"+string(rune('a'+i))+".go")
+		if err := os.WriteFile(name, []byte("package x\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Oversize and minified files are skipped regardless.
+	if err := os.WriteFile(filepath.Join(dir, "big.py"), []byte(strings.Repeat("x", 500)), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "app.min.js"), []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	files, err := w.WalkRepo(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("WalkRepo failed: %v", err)
+	}
+	if len(files) != 3 {
+		t.Errorf("expected walk to stop at 3 files, got %d: %+v", len(files), files)
+	}
+	for _, f := range files {
+		base := filepath.Base(f.Path)
+		if base == "big.py" || base == "app.min.js" {
+			t.Errorf("expected %s to be skipped", base)
+		}
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 )
 
 // FileRecord is a previously-ingested file's identity, used to diff
@@ -11,11 +12,17 @@ import (
 type FileRecord struct {
 	ID   int64
 	Hash string
+	// EmbeddedModel is the embedding model this file's chunks were embedded
+	// with, or "" if they haven't been (yet).
+	EmbeddedModel string
 }
 
 func (s *Store) GetRepositoryByURL(ctx context.Context, repoURL string) (*Repository, error) {
 
-	query := `SELECT id, repo_url FROM repositories WHERE repo_url = $1`
+	// Case-insensitive: GitHub treats owner/repo case-insensitively, so
+	// "Owner/Repo" and "owner/repo" are the same repository and must not
+	// become two separate ingestions.
+	query := `SELECT id, repo_url FROM repositories WHERE LOWER(repo_url) = LOWER($1) ORDER BY created_at LIMIT 1`
 
 	var repo Repository
 
@@ -66,7 +73,7 @@ func (s *Store) GetLastCommitSHA(ctx context.Context, repoID string) (string, er
 
 func (s *Store) GetFileHashesByRepo(ctx context.Context, repoID string) (map[string]FileRecord, error) {
 
-	query := `SELECT id, path, hash FROM files WHERE repo_id = $1`
+	query := `SELECT id, path, hash, embedded_model FROM files WHERE repo_id = $1`
 
 	rows, err := s.db.QueryContext(ctx, query, repoID)
 	if err != nil {
@@ -80,13 +87,13 @@ func (s *Store) GetFileHashesByRepo(ctx context.Context, repoID string) (map[str
 
 		var id int64
 		var path string
-		var hash sql.NullString
+		var hash, embeddedModel sql.NullString
 
-		if err := rows.Scan(&id, &path, &hash); err != nil {
+		if err := rows.Scan(&id, &path, &hash, &embeddedModel); err != nil {
 			return nil, err
 		}
 
-		result[path] = FileRecord{ID: id, Hash: hash.String}
+		result[path] = FileRecord{ID: id, Hash: hash.String, EmbeddedModel: embeddedModel.String}
 	}
 
 	return result, rows.Err()
@@ -168,4 +175,50 @@ func(s *Store) GetAllRepositories(ctx context.Context) ([]Repository, error){
 	}
 
 	return repos, rows.Err()
+}
+
+// GetLastCheckedAt returns when the repo was last checked against its
+// remote. ok is false if it has never been checked.
+func (s *Store) GetLastCheckedAt(ctx context.Context, repoID string) (t time.Time, ok bool, err error) {
+	var checked sql.NullTime
+	err = s.db.QueryRowContext(ctx, `SELECT last_checked_at FROM repositories WHERE id = $1`, repoID).Scan(&checked)
+	if err == sql.ErrNoRows {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("failed to get last checked time: %w", err)
+	}
+	return checked.Time, checked.Valid, nil
+}
+
+// MarkFilesEmbedded records that every chunk of these files is embedded with
+// model.
+func (s *Store) MarkFilesEmbedded(ctx context.Context, repoID string, paths []string, model string) error {
+	if len(paths) == 0 {
+		return nil
+	}
+
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE files SET embedded_model = $3 WHERE repo_id = $1 AND path = ANY($2)`,
+		repoID, paths, model,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to mark files embedded: %w", err)
+	}
+	return nil
+}
+
+// CountFilesPendingEmbedding counts a repo's files not (fully) embedded with
+// model - left over from an exhausted quota, the per-run chunk budget, or a
+// model change.
+func (s *Store) CountFilesPendingEmbedding(ctx context.Context, repoID, model string) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM files WHERE repo_id = $1 AND embedded_model IS DISTINCT FROM $2`,
+		repoID, model,
+	).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count files pending embedding: %w", err)
+	}
+	return n, nil
 }

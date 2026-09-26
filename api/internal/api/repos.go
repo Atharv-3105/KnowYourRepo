@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sync/atomic"
 	"time"
 
-	"path/filepath"
+	"github.com/atharva-3105/KnowYourRepo/internal/config"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/answer"
 	"github.com/atharva-3105/KnowYourRepo/internal/architecture"
@@ -28,8 +30,12 @@ import (
 )
 
 const (
-	IngestionWorkerCount = 2
-	IngestionQueueSize   = 16
+	IngestionQueueSize = 16
+
+	// staleCheckCooldown bounds how often a cached-repo request triggers a
+	// background "has the remote moved?" check - each check is a real
+	// network round trip to GitHub.
+	staleCheckCooldown = 10 * time.Minute
 )
 
 type RepoHandler struct {
@@ -40,6 +46,7 @@ type RepoHandler struct {
 	extractor           *graph.Extractor
 	cloner              *ingestion.Cloner
 	walker              *ingestion.Walker
+	github              *ingestion.GitHubClient
 	hybridRetriever     *retrieval.HybridRetriever
 	contextBuilder      *contextbuilder.Builder
 	ragService          *rag.Service
@@ -47,11 +54,16 @@ type RepoHandler struct {
 	architectureService *architecture.Service
 	answerService       *answer.Service
 	workerPool          *worker.Pool
+	limits              config.LimitsConfig
+
+	shuttingDown atomic.Bool
+	stopJanitor  chan struct{}
 }
 
 func NewRepoHandler(
-	logger  *slog.Logger,
-	store   *store.Store,
+	cfg *config.Config,
+	logger *slog.Logger,
+	store *store.Store,
 	sidecar *sidecar.Client,
 ) *RepoHandler {
 
@@ -69,70 +81,144 @@ func NewRepoHandler(
 		parser:              ingestion.NewParser(logger),
 		extractor:           graph.NewExtractor(logger),
 		cloner:              ingestion.NewCloner(logger),
-		walker:              ingestion.NewWalker(logger),
+		walker:              ingestion.NewWalker(logger).WithLimits(cfg.Limits.MaxRepoFiles, cfg.Limits.MaxFileBytes),
+		github:              ingestion.NewGitHubClient(cfg.GitHub.Token),
 		hybridRetriever:     hybridRetriever,
 		contextBuilder:      builder,
 		ragService:          ragService,
-		chatStore:           chat.NewStore(),
+		chatStore:           chat.NewStore(cfg.Limits.MaxChatSessions, cfg.Limits.ChatSessionTTL),
 		architectureService: architectureService,
+		limits:              cfg.Limits,
+		stopJanitor:         make(chan struct{}),
 	}
+
+	h.chatStore.StartJanitor(10*time.Minute, h.stopJanitor)
 
 	// answerService needs h as its RepoSyncer (for freshness-triggered
 	// background sync), so it's constructed after h exists - same
 	// deferred-wiring pattern as workerPool below.
 	h.answerService = answer.NewService(hybridRetriever, architectureService, ragService, h, logger)
 
-	workerPool := worker.NewPool(IngestionWorkerCount, IngestionQueueSize, h.handleIngestionJob, logger)
-	workerPool.Start(context.Background())
-
-	h.workerPool = workerPool
+	h.workerPool = worker.NewPool(cfg.Limits.IngestionWorkers, IngestionQueueSize, h.handleIngestionJob, logger)
+	h.workerPool.Start(context.Background())
 
 	return h
 }
 
-func(h *RepoHandler) CreateRepo(c *gin.Context) {
+// ResumeUnfinishedJobs re-enqueues jobs left pending or processing by a
+// previous process - a deploy, a crash, or a free-tier instance spinning
+// down mid-ingestion. Ingestion is incremental (unchanged files are skipped
+// by hash), so resuming a half-finished job redoes only the unfinished part.
+func (h *RepoHandler) ResumeUnfinishedJobs(ctx context.Context) {
+	ids, err := h.store.ListUnfinishedJobIDs(ctx)
+	if err != nil {
+		h.logger.Error("resume_unfinished_jobs_failed", "error", err)
+		return
+	}
+
+	for _, id := range ids {
+		if !h.workerPool.Enqueue(id) {
+			msg := "ingestion queue was full after a server restart - please resubmit"
+			if err := h.store.UpdateJobStatus(ctx, id, store.JobStatusFailed, &msg); err != nil {
+				h.logger.Error("failed to mark unresumable job failed", "job_id", id, "error", err)
+			}
+			continue
+		}
+		h.logger.Info("ingestion_job_resumed", "job_id", id)
+	}
+}
+
+// Shutdown stops accepting ingestion work and waits (up to ctx's deadline)
+// for in-flight jobs; see worker.Pool.Shutdown.
+func (h *RepoHandler) Shutdown(ctx context.Context) error {
+	h.shuttingDown.Store(true)
+	close(h.stopJanitor)
+	return h.workerPool.Shutdown(ctx)
+}
+
+// CreateRepo handles POST /repos.
+//
+// Three outcomes, cheapest first:
+//   - The URL is already being ingested: return that job (202). Enqueueing
+//     it again would put two workers on the same clone directory.
+//   - The URL was already ingested successfully: return it immediately
+//     (200, cached) - the index, embeddings and overview already exist, so
+//     re-running the pipeline would spend provider quota to reproduce them.
+//     A background staleness check still catches it up if the remote moved.
+//   - Otherwise (new URL, or a previous attempt failed): queue ingestion (202).
+func (h *RepoHandler) CreateRepo(c *gin.Context) {
 
 	var req CreateRepoRequest
 
-	if err := c.ShouldBindJSON(&req); err != nil{
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": err.Error(),
-		})
-		return 
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+
+	repoURL, err := NormalizeGitHubURL(req.RepoURL)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
 	}
 
 	ctx := c.Request.Context()
 
-	//Deduplication by URL - if this repo was already ingested, refresh the existing repo_id instead of cloning a brand new one
-	existingRepo, err := h.store.GetRepositoryByURL(ctx, req.RepoURL)
+	active, err := h.store.GetActiveJobByURL(ctx, repoURL)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": err.Error(),
+		respondInternalError(c, h.logger, "create_repo_active_job_lookup_failed", err)
+		return
+	}
+	if active != nil {
+		h.logger.Info("ingestion_already_in_progress", "repo_id", active.ID, "repo_url", repoURL)
+		c.JSON(http.StatusAccepted, CreateRepoResponse{
+			Success: true,
+			Message: "ingestion already in progress",
+			RepoID:  active.ID,
 		})
 		return
 	}
 
-	repoID := ""
+	existingRepo, err := h.store.GetRepositoryByURL(ctx, repoURL)
+	if err != nil {
+		respondInternalError(c, h.logger, "create_repo_lookup_failed", err)
+		return
+	}
 
-	//If the repo is already present, reuse its ID - otherwise create a fresh one
+	var repoID string
+
 	if existingRepo != nil {
 		repoID = existingRepo.ID
 
-		h.logger.Info("repo_already_ingested_refreshing", "repo_id", repoID, "repo_url", req.RepoURL)
-	} else {
+		job, err := h.store.FindJob(ctx, repoID)
+		if err != nil {
+			respondInternalError(c, h.logger, "create_repo_job_lookup_failed", err, "repo_id", repoID)
+			return
+		}
 
-		//Create the complete process of Fresh RepoID creation. The
-		//repositories row itself is NOT inserted here - it's inserted by
-		//ingestRepository only after CloneRepo actually succeeds, so a
-		//failed clone never leaves a "ghost" repository (zero files, but
-		//indistinguishable from a real empty repo to every read endpoint).
+		if job != nil && job.Status == store.JobStatusCompleted {
+			h.logger.Info("repo_cache_hit", "repo_id", repoID, "repo_url", repoURL)
+			metrics.RepoCacheHitsTotal.Inc()
+			h.checkStalenessInBackground(repoID, existingRepo.RepoURL)
+
+			c.JSON(http.StatusOK, CreateRepoResponse{
+				Success: true,
+				Message: "repository already ingested",
+				RepoID:  repoID,
+				Cached:  true,
+			})
+			return
+		}
+
+		h.logger.Info("repo_requeued_after_unfinished_attempt", "repo_id", repoID, "repo_url", repoURL)
+	} else {
+		// The repositories row itself is NOT inserted here - it's inserted
+		// by ingestRepository only after the clone actually succeeds, so a
+		// failed clone never leaves a "ghost" repository.
 		repoID = generateRepoDirName()
 	}
 
-	//Generate a Job for Ingestion workers - runs for both the existing-repo
-	//refresh path and the brand-new-repo path
-	if err := h.store.InsertJob(ctx, repoID, req.RepoURL); err != nil{
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := h.store.InsertJob(ctx, repoID, repoURL); err != nil {
+		respondInternalError(c, h.logger, "create_repo_insert_job_failed", err, "repo_id", repoID)
 		return
 	}
 
@@ -140,8 +226,7 @@ func(h *RepoHandler) CreateRepo(c *gin.Context) {
 
 		errMsg := "ingestion queue is full, try again shortly"
 
-		if updateErr := h.store.UpdateJobStatus(ctx,repoID, store.JobStatusFailed, &errMsg); updateErr != nil{
-
+		if updateErr := h.store.UpdateJobStatus(ctx, repoID, store.JobStatusFailed, &errMsg); updateErr != nil {
 			h.logger.Error("failed to mark job failed", "job_id", repoID, "error", updateErr)
 		}
 
@@ -149,13 +234,37 @@ func(h *RepoHandler) CreateRepo(c *gin.Context) {
 		return
 	}
 
-	h.logger.Info("ingestion_job_queued", "repo_id", repoID, "repo_url", req.RepoURL)
+	h.logger.Info("ingestion_job_queued", "repo_id", repoID, "repo_url", repoURL)
 
 	c.JSON(http.StatusAccepted, CreateRepoResponse{
 		Success: true,
 		Message: "ingestion queued",
-		RepoID:	repoID,
+		RepoID:  repoID,
 	})
+}
+
+// checkStalenessInBackground runs the cheap remote-HEAD comparison for a
+// cached repo (no clone, no disk write) and enqueues a sync only if the
+// remote actually moved - rate-limited by staleCheckCooldown so repeated
+// submissions of a popular URL don't each cost a GitHub round trip.
+func (h *RepoHandler) checkStalenessInBackground(repoID, repoURL string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		lastChecked, ok, err := h.store.GetLastCheckedAt(ctx, repoID)
+		if err != nil {
+			h.logger.Warn("staleness_check_lookup_failed", "repo_id", repoID, "error", err)
+			return
+		}
+		if ok && time.Since(lastChecked) < staleCheckCooldown {
+			return
+		}
+
+		if _, err := h.checkAndEnqueueSync(ctx, repoID, repoURL); err != nil {
+			h.logger.Warn("staleness_check_failed", "repo_id", repoID, "error", err)
+		}
+	}()
 }
 
 // requireRepoExists checks that repoID names a repository that actually
@@ -170,12 +279,12 @@ func (h *RepoHandler) requireRepoExists(c *gin.Context, repoID string) bool {
 
 	repo, err := h.store.GetRepositoryByID(c.Request.Context(), repoID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, h.logger, "repo_lookup_failed", err, "repo_id", repoID)
 		return false
 	}
 
 	if repo == nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "repository not found: " + repoID})
+		c.JSON(http.StatusNotFound, gin.H{"error": "repository not found"})
 		return false
 	}
 
@@ -196,9 +305,22 @@ func (h *RepoHandler) handleIngestionJob(ctx context.Context, jobID string) erro
 	statusCtx := context.Background()
 
 	if err != nil {
+		// Interrupted by shutdown (a deploy, or a free-tier instance
+		// spinning down): leave the job pending so ResumeUnfinishedJobs
+		// picks it up on the next start, instead of reporting a failure
+		// the user didn't cause.
+		if h.shuttingDown.Load() && ctx.Err() != nil {
+			msg := "interrupted by a server restart - it will resume automatically"
+			if updateErr := h.store.UpdateJobStatus(statusCtx, jobID, store.JobStatusPending, &msg); updateErr != nil {
+				h.logger.Error("failed to mark interrupted job pending", "job_id", jobID, "error", updateErr)
+			}
+			h.logger.Warn("ingestion_interrupted_by_shutdown", "job_id", jobID)
+			return err
+		}
+
 		metrics.IngestionJobDuration.WithLabelValues("failed").Observe(time.Since(start).Seconds())
 
-		msg := err.Error()
+		msg := userFacingJobError(err)
 		if updateErr := h.store.UpdateJobStatus(statusCtx, jobID, store.JobStatusFailed, &msg); updateErr != nil {
 			h.logger.Error("failed to mark job failed", "job_id", jobID, "error", updateErr)
 		}
@@ -241,13 +363,26 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 	repoID := jobID
 	repoURL := job.RepoURL
 
-	repoDir := filepath.Join("..", "data", "repos", repoID)
+	repoDir := repoDirFor(repoID)
 
 	h.logger.Info("starting repo ingestion", "repo_url", repoURL)
+
+	// Fail fast on a repository that's too large for this deployment (or
+	// doesn't exist) before spending disk, memory and time cloning it.
+	if err := h.github.CheckRepoSize(ctx, repoURL, h.limits.MaxRepoSizeMB); err != nil {
+		return err
+	}
 
 	//Clone if this is the first time, sync (fetch + hard reset) if we've
 	//already cloned this repo before.
 	if _, err := os.Stat(filepath.Join(repoDir, ".git")); os.IsNotExist(err) {
+
+		// A directory without .git is a clone that was interrupted partway
+		// (e.g. by a restart) - CloneRepo refuses a non-empty destination,
+		// so clear it and start over.
+		if err := os.RemoveAll(repoDir); err != nil {
+			return fmt.Errorf("failed to clear partial clone: %w", err)
+		}
 
 		if err := h.cloner.CloneRepo(ctx, repoURL, repoDir); err != nil {
 			return fmt.Errorf("clone failed: %w", err)
@@ -256,11 +391,20 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		//Only now that the clone actually succeeded does this repo become a
 		//real, browsable entity - see the comment in CreateRepo for why this
 		//moved out of the synchronous POST /repos path.
-		if err := h.store.InsertRepository(ctx, store.Repository{
-			ID:      repoID,
-			RepoURL: repoURL,
-		}); err != nil {
-			return fmt.Errorf("failed to record repository: %w", err)
+		// The row can already exist when an existing repo is re-cloned
+		// (e.g. its clone directory was lost on an ephemeral free-tier
+		// disk) - only insert if it's genuinely new.
+		existing, err := h.store.GetRepositoryByID(ctx, repoID)
+		if err != nil {
+			return fmt.Errorf("failed to check repository record: %w", err)
+		}
+		if existing == nil {
+			if err := h.store.InsertRepository(ctx, store.Repository{
+				ID:      repoID,
+				RepoURL: repoURL,
+			}); err != nil {
+				return fmt.Errorf("failed to record repository: %w", err)
+			}
 		}
 
 	} else {
@@ -274,6 +418,16 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		h.logger.Warn("failed to resolve head commit sha", "error", err)
 	} else if err := h.store.TouchRepoCheck(ctx, repoID, commitSHA); err != nil {
 		h.logger.Error("failed to record repo sync state", "error", err)
+	}
+
+	// The current embedding model decides which already-indexed files still
+	// need (re-)embedding. If the sidecar can't say, unchanged files are
+	// skipped as usual and nothing is marked embedded.
+	embedModel := ""
+	if info, err := h.sidecar.EmbedInfo(ctx); err != nil {
+		h.logger.Warn("embed_info_unavailable", "repo_id", repoID, "error", err)
+	} else {
+		embedModel = info.Model
 	}
 
 	if err := h.store.UpdateJobStage(ctx, jobID, store.StageWalking); err != nil {
@@ -299,9 +453,12 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 	}
 
 	var embedItems []sidecar.EmbedBatchItem
+	var spans []fileChunkSpan
 	seenPaths := make(map[string]bool)
 
-	var skipped, processed int
+	// processed = new or changed content; reembedded = unchanged content
+	// whose embedding is missing or from another model.
+	var skipped, processed, reembedded int
 
 	if err := h.store.UpdateJobStage(ctx, jobID, store.StageParsing); err != nil {
 		h.logger.Error("failed to mark job stage parsing", "job_id", jobID, "error", err)
@@ -319,9 +476,11 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		}
 
 		prior, hadPrior := existing[file.Path]
+		contentUnchanged := hadPrior && prior.Hash == hash
+		needsEmbedding := embedModel != "" && prior.EmbeddedModel != embedModel
 
-		if hadPrior && prior.Hash == hash {
-			//Unchanged since last ingestion - skip parsing/extraction/embedding entirely
+		if contentUnchanged && !needsEmbedding {
+			//Unchanged and embedded with the current model - skip parsing/extraction/embedding entirely
 			skipped++
 			continue
 		}
@@ -343,9 +502,14 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 			continue
 		}
 
+		spans = append(spans, fileChunkSpan{path: file.Path, start: len(embedItems), end: len(embedItems) + len(items)})
 		embedItems = append(embedItems, items...)
 		repoIR.Files = append(repoIR.Files, irFile)
-		processed++
+		if contentUnchanged {
+			reembedded++
+		} else {
+			processed++
+		}
 	}
 
 	//Anything previously known but not seen on this walk was deleted upstream
@@ -364,7 +528,7 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		}
 	}
 
-	h.logger.Info("incremental_diff_complete", "processed", processed, "skipped", skipped, "deleted", len(existing)-len(seenPaths))
+	h.logger.Info("incremental_diff_complete", "processed", processed, "reembedded", reembedded, "skipped", skipped, "deleted", len(existing)-len(seenPaths))
 
 	// Parsing/symbol/call-graph extraction just finished, unconditionally -
 	// if we've reached this point, the repo already has real, usable
@@ -380,6 +544,17 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		h.logger.Error("failed to mark job stage embedding", "job_id", jobID, "error", err)
 	}
 
+	// Free-tier guardrail: embedding is the one pipeline stage that spends
+	// provider quota per chunk. Past the cap, the remaining chunks are still
+	// parsed, stored and reachable through lexical and call-graph retrieval -
+	// they just aren't semantically searchable.
+	if h.limits.MaxEmbedChunks > 0 && len(embedItems) > h.limits.MaxEmbedChunks {
+		h.logger.Warn("embed_chunk_cap_applied", "repo_id", repoID, "chunks", len(embedItems), "cap", h.limits.MaxEmbedChunks)
+		metrics.EmbedChunksTotal.WithLabelValues("capped").Add(float64(len(embedItems) - h.limits.MaxEmbedChunks))
+		embedItems = embedItems[:h.limits.MaxEmbedChunks]
+	}
+
+	embedded := 0
 	if len(embedItems) > 0 {
 
 		h.logger.Info("sending batch embeddings", "count", len(embedItems))
@@ -392,8 +567,10 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		// ingestion never happened. It also meant GenerateOverview below,
 		// which doesn't actually depend on embeddings, silently never ran.
 		// embed_status carries the real, separate outcome instead.
-		if err := h.sidecar.Embed(ctx, sidecar.EmbedBatchRequest{Items: embedItems}); err != nil {
-			h.logger.Warn("batch_embedding_failed", "repo_id", repoID, "error", err)
+		var embedErr error
+		embedded, embedErr = h.embedInBatches(ctx, repoID, embedItems)
+		if err := embedErr; err != nil {
+			h.logger.Warn("batch_embedding_failed", "repo_id", repoID, "embedded", embedded, "error", err)
 			if statusErr := h.store.SetEmbedStatus(ctx, jobID, store.JobStatusFailed); statusErr != nil {
 				h.logger.Error("failed to set job embed_status", "job_id", jobID, "error", statusErr)
 			}
@@ -402,6 +579,14 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 		}
 	} else if err := h.store.SetEmbedStatus(ctx, jobID, store.JobStatusSkipped); err != nil {
 		h.logger.Error("failed to set job embed_status", "job_id", jobID, "error", err)
+	}
+
+	// Files whose chunks all made it in are done; the rest (quota ran out,
+	// or past the per-run chunk budget) are picked up by the next sync.
+	if embedModel != "" {
+		if err := h.store.MarkFilesEmbedded(ctx, repoID, fullyEmbeddedFiles(spans, embedded), embedModel); err != nil {
+			h.logger.Error("failed to mark files embedded", "repo_id", repoID, "error", err)
+		}
 	}
 
 	//Save IR File Representation
@@ -421,8 +606,16 @@ func (h *RepoHandler) ingestRepository(ctx context.Context, jobID string) error 
 	// zero entrypoints detected, etc.) must never fail the whole ingestion
 	// job - symbols/embeddings are the core value, the overview is
 	// supplementary. See the design spec's Error handling section.
-	if err := h.architectureService.GenerateOverview(ctx, repoID, readmeText); err != nil {
-		h.logger.Warn("overview_generation_failed", "repo_id", repoID, "error", err)
+	deleted := len(existing) - len(seenPaths)
+	if deleted < 0 {
+		deleted = 0
+	}
+	if h.shouldGenerateOverview(ctx, repoID, processed, deleted) {
+		if err := h.architectureService.GenerateOverview(ctx, repoID, readmeText); err != nil {
+			h.logger.Warn("overview_generation_failed", "repo_id", repoID, "error", err)
+		}
+	} else {
+		h.logger.Info("overview_generation_skipped_no_changes", "repo_id", repoID)
 	}
 
 	if err := h.store.UpdateJobStage(ctx, jobID, store.StageDone); err != nil {
@@ -542,6 +735,26 @@ func (h *RepoHandler) processFile(ctx context.Context, repoID string, file inges
 // HEAD actually moved. Shared by the on-demand /repos/:id/sync endpoint
 func (h *RepoHandler) checkAndEnqueueSync(ctx context.Context, repoID, repoURL string) (enqueued bool, err error) {
 
+	// Already queued or running - a second job would race the first on the
+	// same clone directory.
+	if active, err := h.store.GetActiveJobByURL(ctx, repoURL); err != nil {
+		return false, fmt.Errorf("failed to check for an active job: %w", err)
+	} else if active != nil {
+		return true, nil
+	}
+
+	// On hosts with an ephemeral filesystem (most free tiers), the clone
+	// directory is gone after every restart even though the index in
+	// Postgres is intact. The remote SHA would still match, so without this
+	// the repo would read as "up to date" forever with no files on disk for
+	// the code view. Re-syncing re-clones, and every file is then skipped by
+	// hash - no re-parsing, no re-embedding.
+	cloneMissing := !h.cloneExists(repoID)
+
+	// Files left unembedded by an exhausted daily quota, the per-run chunk
+	// budget, or an embedding-model change get another pass.
+	pendingEmbedding := h.hasPendingEmbedding(ctx, repoID)
+
 	remoteSHA, err := ingestion.RemoteHeadSHA(ctx, repoURL)
 	if err != nil {
 		return false, fmt.Errorf("failed to check remote head: %w", err)
@@ -552,7 +765,7 @@ func (h *RepoHandler) checkAndEnqueueSync(ctx context.Context, repoID, repoURL s
 		return false, fmt.Errorf("failed to get last known commit sha: %w", err)
 	}
 
-	if remoteSHA == localSHA {
+	if remoteSHA == localSHA && !cloneMissing && !pendingEmbedding {
 		if err := h.store.TouchRepoCheck(ctx, repoID, localSHA); err != nil {
 			h.logger.Error("failed to record repo check", "repo_id", repoID, "error", err)
 		}
@@ -567,7 +780,7 @@ func (h *RepoHandler) checkAndEnqueueSync(ctx context.Context, repoID, repoURL s
 		return false, fmt.Errorf("ingestion queue is full")
 	}
 
-	h.logger.Info("repo_sync_enqueued", "repo_id", repoID, "remote_sha", remoteSHA, "local_sha", localSHA)
+	h.logger.Info("repo_sync_enqueued", "repo_id", repoID, "remote_sha", remoteSHA, "local_sha", localSHA, "clone_missing", cloneMissing, "pending_embedding", pendingEmbedding)
 
 	return true, nil
 }
@@ -583,7 +796,7 @@ func (h *RepoHandler) SyncRepo(c *gin.Context) {
 
 	repo, err := h.store.GetRepositoryByID(ctx, repoID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, h.logger, "sync_repo_lookup_failed", err, "repo_id", repoID)
 		return
 	}
 
@@ -594,7 +807,7 @@ func (h *RepoHandler) SyncRepo(c *gin.Context) {
 
 	enqueued, err := h.checkAndEnqueueSync(ctx, repo.ID, repo.RepoURL)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, h.logger, "sync_repo_failed", err, "repo_id", repoID)
 		return
 	}
 
@@ -625,6 +838,46 @@ func (h *RepoHandler) SyncIfStale(ctx context.Context, repoID string) error {
 	return err
 }
 
+// repoDirFor is where a repository's working copy lives, relative to the
+// API's working directory (api/) - see CLAUDE.md on why it's relative.
+func repoDirFor(repoID string) string {
+	return filepath.Join("..", "data", "repos", repoID)
+}
+
+// hasPendingEmbedding reports whether a sync would embed anything: some
+// files aren't embedded with the current model, and the quota isn't known
+// to be exhausted (a sync then would only re-parse and fail to embed).
+func (h *RepoHandler) hasPendingEmbedding(ctx context.Context, repoID string) bool {
+	info, err := h.sidecar.EmbedInfo(ctx)
+	if err != nil || info.Exhausted {
+		return false
+	}
+
+	pending, err := h.store.CountFilesPendingEmbedding(ctx, repoID, info.Model)
+	if err != nil {
+		h.logger.Warn("pending_embedding_check_failed", "repo_id", repoID, "error", err)
+		return false
+	}
+	return pending > 0
+}
+
+func (h *RepoHandler) cloneExists(repoID string) bool {
+	_, err := os.Stat(filepath.Join(repoDirFor(repoID), ".git"))
+	return err == nil
+}
+
+// restoreCloneInBackground triggers a re-sync for a repo whose clone
+// directory is missing (see checkAndEnqueueSync). Fire-and-forget: the
+// caller answers the current request immediately.
+func (h *RepoHandler) restoreCloneInBackground(repoID, repoURL string) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := h.checkAndEnqueueSync(ctx, repoID, repoURL); err != nil {
+			h.logger.Warn("clone_restore_enqueue_failed", "repo_id", repoID, "error", err)
+		}
+	}()
+}
 
 func generateRepoDirName() string {
 	return fmt.Sprintf("repo_%d", time.Now().UnixNano())

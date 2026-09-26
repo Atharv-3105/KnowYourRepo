@@ -94,7 +94,18 @@ func (h *RepoHandler) GetFileContent(c *gin.Context) {
 		return
 	}
 
-	repoDir, err := filepath.Abs(filepath.Join("..", "data", "repos", repoID))
+	// The index lives in Postgres, but the source text lives in the clone
+	// directory - which a free-tier host's ephemeral disk wipes on every
+	// restart. Kick off a restore and tell the client to retry, rather than
+	// returning a 404 that reads as "this file doesn't exist".
+	if !h.cloneExists(repoID) {
+		h.restoreCloneInBackground(repoID, repo.RepoURL)
+		c.Header("Retry-After", "20")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "repository files are being restored, please retry shortly"})
+		return
+	}
+
+	repoDir, err := filepath.Abs(repoDirFor(repoID))
 	if err != nil {
 		h.logger.Error("file_content_repo_dir_resolve_failed", "repo_id", repoID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve repository path"})

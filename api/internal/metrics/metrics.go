@@ -46,4 +46,19 @@ var (
 			Help: "Current number of ingestion jobs waiting in the worker pool's queue.",
 		},
 	)
+
+	RepoCacheHitsTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "repo_cache_hits_total",
+			Help: "POST /repos requests answered from an already-ingested repository instead of re-running ingestion.",
+		},
+	)
+
+	EmbedChunksTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "embed_chunks_total",
+			Help: "Code chunks sent for embedding, labeled by outcome (embedded/failed/capped). Capped chunks were skipped by the MAX_EMBED_CHUNKS free-tier guardrail.",
+		},
+		[]string{"outcome"},
+	)
 )

@@ -50,7 +50,7 @@ func (c *Client) GenerateOverview(ctx context.Context, req GenerateOverviewReque
 	}
 
 	httpReq.Header.Set("Content-Type", "application/json")
-	setRequestIDHeader(httpReq, ctx)
+	c.setHeaders(httpReq, ctx)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {

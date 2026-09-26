@@ -2,8 +2,8 @@ package ingestion
 
 import (
 	"context"
-	"log/slog"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,45 +14,62 @@ const maxReadmeChars = 8000
 var readmeCandidates = []string{"README.md", "README.rst", "README.txt", "README"}
 
 type FileInfo struct {
-	Path string  //Absolute File Path
-	RelPath string //Relative File Path
-	Language string 
+	Path     string //Absolute File Path
+	RelPath  string //Relative File Path
+	Language string
 }
 
 type Walker struct {
-	logger *slog.Logger
-	ignoredDirs map[string]struct{}
+	logger       *slog.Logger
+	ignoredDirs  map[string]struct{}
+	maxFiles     int
+	maxFileBytes int64
+}
+
+// WithLimits caps how much of a repository is walked - free-tier guardrails
+// (see config.LimitsConfig). maxFiles bounds total parse/embed work and
+// memory; maxFileBytes skips generated or vendored blobs that would parse
+// into one giant chunk. Zero disables a limit.
+func (w *Walker) WithLimits(maxFiles int, maxFileBytes int64) *Walker {
+	w.maxFiles = maxFiles
+	w.maxFileBytes = maxFileBytes
+	return w
 }
 
 func NewWalker(logger *slog.Logger) *Walker {
 	return &Walker{
-		logger:  logger,
+		logger: logger,
 		ignoredDirs: map[string]struct{}{
-			".git": {},
-			"node_modules": {},
-			"dist":	{},
-			"build": {},
-			".next": {},
-			"vendor": {},
-			"venv": {},
-			"__pycache__": {}, 
+			".git":          {},
+			"node_modules":  {},
+			"dist":          {},
+			"build":         {},
+			".next":         {},
+			"vendor":        {},
+			"venv":          {},
+			".venv":         {},
+			"coverage":      {},
+			"target":        {},
+			"site-packages": {},
+			"__pycache__":   {},
 		},
 	}
 }
 
 func (w *Walker) WalkRepo(ctx context.Context, root string) ([]FileInfo, error) {
 	var files []FileInfo
+	var skippedLarge int
+	var truncated bool
 
 	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		//check for cancellation signal from the orchestrator
 		select {
 		case <-ctx.Done():
-				return ctx.Err()
+			return ctx.Err()
 		default:
 		}
 
-		
-		if err != nil{
+		if err != nil {
 			return fmt.Errorf("error accessing path %s: %w", path, err)
 		}
 
@@ -75,14 +92,31 @@ func (w *Walker) WalkRepo(ctx context.Context, root string) ([]FileInfo, error) 
 			return nil //unsupported fileType
 		}
 
+		if isMinified(d.Name()) {
+			return nil
+		}
+
+		if w.maxFileBytes > 0 {
+			info, err := d.Info()
+			if err == nil && info.Size() > w.maxFileBytes {
+				skippedLarge++
+				return nil
+			}
+		}
+
+		if w.maxFiles > 0 && len(files) >= w.maxFiles {
+			truncated = true
+			return filepath.SkipAll
+		}
+
 		relPath, err := filepath.Rel(root, path)
 		if err != nil {
 			return fmt.Errorf("failed to get relative path: %w", err)
 		}
 
 		files = append(files, FileInfo{
-			Path: path,
-			RelPath: relPath,
+			Path:     path,
+			RelPath:  relPath,
 			Language: lang,
 		})
 
@@ -93,10 +127,9 @@ func (w *Walker) WalkRepo(ctx context.Context, root string) ([]FileInfo, error) 
 		return nil, fmt.Errorf("failed to walk repository: %w", err)
 	}
 
-	w.logger.Info("repository walk complete", "files_found", len(files))
+	w.logger.Info("repository walk complete", "files_found", len(files), "skipped_oversize", skippedLarge, "truncated_at_limit", truncated)
 	return files, nil
-} 
-
+}
 
 //detectLanguage infers programming language
 func detectLanguage(path string) string {
@@ -161,4 +194,12 @@ func (w *Walker) ReadReadme(repoRoot string) (string, error) {
 	}
 
 	return "", nil
+}
+
+// isMinified reports bundler output that shares a real source extension but
+// is one enormous line - parsing and embedding it costs tokens and yields
+// nothing a person would want to read.
+func isMinified(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.Contains(lower, ".min.") || strings.HasSuffix(lower, ".bundle.js") || strings.HasSuffix(lower, "-bundle.js")
 }

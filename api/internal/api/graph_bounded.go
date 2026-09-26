@@ -68,7 +68,7 @@ func (h *RepoHandler) GetBoundedCallGraph(c *gin.Context) {
 
 	edges, err := h.store.GetBoundedCallGraph(c.Request.Context(), repoID, symbol, depth, maxGraphEdgeRows)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, h.logger, "bounded_graph_query_failed", err, "repo_id", repoID)
 		return
 	}
 

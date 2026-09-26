@@ -35,18 +35,29 @@ type KeyLimiter struct {
 	visitors map[string]*visitor
 	r        rate.Limit
 	burst    int
+	keyFunc  func(*gin.Context) string
 }
 
 // NewKeyLimiter builds a limiter allowing r events per second (construct
 // with rate.Every(interval) for "N per duration" limits) with the given
-// burst capacity, per distinct key.
+// burst capacity, per distinct key. Keys default to the TCP peer address;
+// use WithKeyFunc to key on a proxy-aware client IP instead.
 func NewKeyLimiter(r rate.Limit, burst int) *KeyLimiter {
 	kl := &KeyLimiter{
 		visitors: make(map[string]*visitor),
 		r:        r,
 		burst:    burst,
+		keyFunc: func(c *gin.Context) string {
+			return ResolveClientIP(c.Request, 0, "")
+		},
 	}
 	go kl.cleanupLoop()
+	return kl
+}
+
+// WithKeyFunc replaces how a request is mapped to its rate-limit bucket.
+func (kl *KeyLimiter) WithKeyFunc(fn func(*gin.Context) string) *KeyLimiter {
+	kl.keyFunc = fn
 	return kl
 }
 
@@ -90,7 +101,7 @@ func (kl *KeyLimiter) cleanupLoop() {
 // ingested repo) don't need this protection.
 func (kl *KeyLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		limiter := kl.getLimiter(c.ClientIP())
+		limiter := kl.getLimiter(kl.keyFunc(c))
 
 		if !limiter.Allow() {
 			c.JSON(http.StatusTooManyRequests, gin.H{

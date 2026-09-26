@@ -23,7 +23,7 @@ func (h *RepoHandler) ListRepos(c *gin.Context) {
 
 	summaries, err := h.store.ListRepositoriesWithStats(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, h.logger, "list_repos_failed", err)
 		return
 	}
 

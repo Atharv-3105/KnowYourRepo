@@ -2,10 +2,18 @@ package api
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/atharva-3105/KnowYourRepo/internal/chat"
 	"github.com/atharva-3105/KnowYourRepo/internal/retrieval"
 	"github.com/gin-gonic/gin"
+)
+
+const (
+	// chatHistoryTurns is how many prior messages are fed back into the
+	// prompt as conversation context.
+	chatHistoryTurns  = 6
+	maxSessionIDChars = 128
 )
 
 type AgentChatResponse struct {
@@ -86,11 +94,31 @@ func (h *RepoHandler) Chat(c *gin.Context) {
 	var req ChatRequest
 
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 		return
 	}
 
-	history := h.chatStore.RecentMessages(req.SessionID, 6)
+	req.Question = strings.TrimSpace(req.Question)
+	if req.Question == "" || req.RepoID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "question and repo_id are required"})
+		return
+	}
+	// Every character of the question lands in an LLM prompt (and a query
+	// embedding) - both drawn from free-tier provider quotas.
+	if len(req.Question) > h.limits.MaxQuestionChars {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "question is too long"})
+		return
+	}
+	if len(req.SessionID) > maxSessionIDChars {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "session_id is too long"})
+		return
+	}
+
+	if !h.requireRepoExists(c, req.RepoID) {
+		return
+	}
+
+	history := h.chatStore.RecentMessages(req.SessionID, chatHistoryTurns)
 	conversationContext := chat.BuildConversationContext(history)
 
 	h.logger.Info("chat_conversation_loaded", "session_id", req.SessionID, "messages", len(history))
@@ -105,7 +133,7 @@ func (h *RepoHandler) Chat(c *gin.Context) {
 	)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondInternalError(c, h.logger, "chat_answer_failed", err, "repo_id", req.RepoID)
 		return
 	}
 
