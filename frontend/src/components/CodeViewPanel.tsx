@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import type { ThemedToken } from "@shikijs/types";
 import { ApiError, getFileContent } from "../api";
 import { getHighlighter } from "../lib/highlighter";
@@ -23,7 +23,6 @@ interface CodeViewPanelProps {
 // against tags spanning line boundaries.
 export default function CodeViewPanel({ repoId }: CodeViewPanelProps) {
   const { target, close } = useCodeView();
-  const [lines, setLines] = useState<ThemedToken[][] | null>(null);
   const highlightRef = useRef<HTMLTableRowElement>(null);
 
   const fileQuery = useQuery({
@@ -32,27 +31,22 @@ export default function CodeViewPanel({ repoId }: CodeViewPanelProps) {
     enabled: Boolean(target),
   });
 
-  useEffect(() => {
-    if (!fileQuery.data) {
-      setLines(null);
-      return;
-    }
-
-    let cancelled = false;
-
-    getHighlighter().then((highlighter) => {
-      if (cancelled) return;
-      const tokens = highlighter.codeToTokensBase(fileQuery.data.content, {
-        lang: languageFromPath(fileQuery.data.path),
+  // Tokenizing is derived from the file content, so it's a query keyed on
+  // that content rather than an effect copying results into state.
+  const file = fileQuery.data;
+  const highlightQuery = useQuery({
+    queryKey: ["highlight", repoId, file?.path, fileQuery.dataUpdatedAt],
+    queryFn: async (): Promise<ThemedToken[][]> => {
+      const highlighter = await getHighlighter();
+      return highlighter.codeToTokensBase(file!.content, {
+        lang: languageFromPath(file!.path),
         theme: "github-light",
       });
-      setLines(tokens);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fileQuery.data]);
+    },
+    enabled: Boolean(file),
+    staleTime: Infinity,
+  });
+  const lines = file ? (highlightQuery.data ?? null) : null;
 
   useEffect(() => {
     if (lines && target?.startLine) {

@@ -18,7 +18,7 @@ export default function Home() {
   const createMutation = useMutation({
     mutationFn: createRepo,
     onSuccess: (res) => {
-      navigate(`/repos/${res.repo_id}/status`);
+      navigate(res.cached ? `/repos/${res.repo_id}/overview` : `/repos/${res.repo_id}/status`);
     },
   });
 

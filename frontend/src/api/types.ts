@@ -14,6 +14,9 @@ export interface CreateRepoResponse {
   success: boolean;
   message: string;
   repo_id: string;
+  // True when the repo was already fully indexed and nothing was queued -
+  // the caller can open it directly instead of showing ingestion progress.
+  cached?: boolean;
 }
 
 export type SyncRepoResponse =

@@ -114,8 +114,9 @@ export default function IngestionProgress() {
                 plainly rather than hidden behind a flat "Ready" badge. */}
             {data.status === "completed" && data.embed_status === "failed" && (
               <p className="text-sm text-ink-dim">
-                Repository is ready, but semantic search isn&apos;t available yet - embedding
-                failed (the provider may be rate-limited). It will retry on the next sync.
+                Repository is ready - browsing, the call graph and Chat all work. Semantic search
+                is only partly available: the free embedding quota ran out, so the remaining
+                files are embedded the next time this repo is synced (Sync on the home page) after it resets.
               </p>
             )}
 
