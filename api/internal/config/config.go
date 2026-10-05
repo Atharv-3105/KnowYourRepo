@@ -19,7 +19,6 @@ type Config struct {
 	Proxy     ProxyConfig
 	Limits    LimitsConfig
 	GitHub    GitHubConfig
-	Sentry    SentryConfig
 }
 
 type ServerConfig struct {
@@ -83,10 +82,6 @@ type GitHubConfig struct {
 	Token string
 }
 
-type SentryConfig struct {
-	DSN string
-}
-
 func (s ServerConfig) Addr() string {
 	return fmt.Sprintf("%s:%s", s.Host, s.Port)
 }
@@ -142,9 +137,6 @@ func Load() (*Config, error) {
 		},
 		GitHub: GitHubConfig{
 			Token: getEnv("GITHUB_TOKEN", ""),
-		},
-		Sentry: SentryConfig{
-			DSN: getEnv("SENTRY_DSN", ""),
 		},
 	}
 
@@ -202,7 +194,7 @@ func loadDotEnv(path string) {
 			continue
 		}
 		key = strings.TrimSpace(key)
-		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		value = parseDotEnvValue(value)
 		if key == "" {
 			continue
 		}
@@ -210,4 +202,22 @@ func loadDotEnv(path string) {
 			os.Setenv(key, value)
 		}
 	}
+}
+
+// parseDotEnvValue unquotes a quoted value (keeping any "#" inside it) and
+// strips a trailing " # comment" from an unquoted one.
+func parseDotEnvValue(raw string) string {
+	v := strings.TrimSpace(raw)
+	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') {
+		if end := strings.IndexByte(v[1:], v[0]); end >= 0 {
+			return v[1 : end+1]
+		}
+	}
+	if i := strings.Index(v, " #"); i >= 0 {
+		v = v[:i]
+	}
+	if i := strings.Index(v, "	#"); i >= 0 {
+		v = v[:i]
+	}
+	return strings.TrimSpace(v)
 }
