@@ -5,6 +5,7 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { agentChat, ApiError } from "../api";
 import type { Source } from "../api";
 import CopyableLocation from "../components/CopyableLocation";
+import Markdown from "../components/Markdown";
 import OpenInCodeView from "../components/OpenInCodeView";
 import { duration, easeOut, settleUp } from "../lib/motion";
 import { toolBadgeClasses } from "../lib/toolColor";
@@ -141,7 +142,13 @@ export default function Chat() {
                   </div>
                 )}
 
-                <div className="whitespace-pre-wrap text-ink">{m.content}</div>
+                {m.role === "assistant" ? (
+                  <div className="text-ink">
+                    <Markdown>{m.content}</Markdown>
+                  </div>
+                ) : (
+                  <div className="whitespace-pre-wrap text-ink">{m.content}</div>
+                )}
 
                 {m.role === "assistant" && m.toolsUsed && m.toolsUsed.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
