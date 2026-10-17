@@ -30,6 +30,10 @@ func  TestExtractGoSymbols(t *testing.T) {
 	func world() {}
 	
 	type User struct {}
+
+	type Namer interface { GetName() string }
+
+	type ID [16]byte
 	
 	func (u User) GetName() string {
 				return "atharva"
@@ -54,7 +58,8 @@ func  TestExtractGoSymbols(t *testing.T) {
 		t.Fatalf("failed to extract symbols: %v", err)
 	}
 
-	expectedCount := 3
+	// 3 functions/methods + the struct, the interface and the named type
+	expectedCount := 6
 
 	if len(symbols) != expectedCount {
 		t.Fatalf("expected %d symbols, got %d", expectedCount, len(symbols))
@@ -64,6 +69,16 @@ func  TestExtractGoSymbols(t *testing.T) {
 		"hello": false, 
 		"world": false,
 		"GetName": false,
+		"User": false,
+		"Namer": false,
+		"ID": false,
+	}
+
+	wantTypes := map[string]string{"User": "struct", "Namer": "interface", "ID": "type", "hello": "function"}
+	for _, sym := range symbols {
+		if want, ok := wantTypes[sym.Name]; ok && sym.Type != want {
+			t.Errorf("symbol %s: expected type %q, got %q", sym.Name, want, sym.Type)
+		}
 	}
 
 	for _, sym := range symbols{

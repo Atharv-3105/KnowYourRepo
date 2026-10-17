@@ -38,6 +38,34 @@ func extractGoSymbols(root *sitter.Node, source []byte, logger *slog.Logger) []S
 			}
 		}
 		
+		// Named types. Struct and interface types are what the architecture
+		// view reports as components; any other named type (type Foo int,
+		// type ID [16]byte) is recorded as a plain "type" symbol so it is still
+		// searchable. Type aliases and generic constraints are skipped.
+		if node.Type() == "type_spec" {
+			nameNode := node.ChildByFieldName("name")
+			typeNode := node.ChildByFieldName("type")
+
+			if nameNode != nil && typeNode != nil {
+				kind := "type"
+				switch typeNode.Type() {
+				case "struct_type":
+					kind = "struct"
+				case "interface_type":
+					kind = "interface"
+				}
+
+				symbols = append(symbols, Symbol{
+					Name:      nameNode.Content(source),
+					Type:      kind,
+					StartLine: int(node.StartPoint().Row) + 1,
+					EndLine:   int(node.EndPoint().Row) + 1,
+				})
+
+				logger.Debug("extracted go symbol", "name", nameNode.Content(source), "type", kind)
+			}
+		}
+
 		//Iteratively walk all the children of current-node
 		for i := 0; i < int(node.ChildCount()); i++ {
 			walk(node.Child(i))
