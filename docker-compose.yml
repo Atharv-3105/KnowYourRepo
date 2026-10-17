@@ -9,10 +9,11 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
     volumes:
       - pgdata:/var/lib/postgresql/data 
-    # Bound to localhost on 5433 so it neither collides with a local Postgres
-    # on 5432 nor is reachable from the network.
+    # Bound to localhost only, on a non-default port (override with
+    # POSTGRES_HOST_PORT) so it collides neither with a local Postgres on 5432
+    # nor with other projects' databases, and isn't reachable from the network.
     ports:
-      - "127.0.0.1:5433:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5434}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d knowyourrepo"]
       interval: 5s 
