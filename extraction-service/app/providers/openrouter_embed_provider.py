@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import time
 from collections import OrderedDict
 from datetime import datetime, timedelta, timezone
@@ -27,6 +28,21 @@ DEFAULT_RETRY_AFTER_SECONDS = 10
 MAX_INPUT_CHARS = 8000
 
 QUERY_CACHE_SIZE = 512
+
+# Some embedding models (nemotron-embed is multimodal) treat image-looking
+# text as an image input and the server rejects it with a 400 ("image inputs
+# require VLM serving"). Source code legitimately contains such text - test
+# fixtures with base64 data URIs, links to .png files - and none of it carries
+# meaning for code search, so it is replaced with a short marker first.
+_DATA_URI = re.compile(r"data:[\w.+-]+/[\w.+-]+;base64,[A-Za-z0-9+/=_-]+")
+_IMAGE_URL = re.compile(r"https?://[^\s\"'<>)]+\.(?:png|jpe?g|gif|svg|webp|bmp|ico|tiff?)(?:\?[^\s\"'<>)]*)?", re.I)
+
+UNEMBEDDABLE_PLACEHOLDER = "[content omitted: could not be embedded]"
+
+
+def sanitize_for_embedding(text: str) -> str:
+    text = _DATA_URI.sub("data:<omitted>", text)
+    return _IMAGE_URL.sub("<image-url>", text)
 
 
 class EmbeddingQuotaExceeded(Exception):
@@ -179,10 +195,21 @@ class OpenRouterEmbedProvider(EmbedProvider):
         return vectors
 
     async def _embed_many(self, inputs: list[str], kind: str) -> list[list[float]]:
-        inputs = [t[:MAX_INPUT_CHARS] for t in inputs]
+        inputs = [sanitize_for_embedding(t[:MAX_INPUT_CHARS]) for t in inputs]
 
         try:
             data = await self._post(inputs, kind)
+        except _UnembeddableInput:
+            # Sanitizing catches the known image-like patterns; this is the
+            # backstop for anything else the server refuses. Bisect to isolate
+            # the offending input so one bad chunk can't fail the whole batch.
+            if len(inputs) > 1:
+                mid = len(inputs) // 2
+                return await self._embed_many(inputs[:mid], kind) + await self._embed_many(inputs[mid:], kind)
+            if inputs == [UNEMBEDDABLE_PLACEHOLDER]:
+                raise EmbeddingProviderError("the embedding server rejected even the placeholder input")
+            logger.warning("embedding input rejected by the server, substituting a placeholder")
+            return await self._embed_many([UNEMBEDDABLE_PLACEHOLDER], kind)
         except _PayloadTooLarge:
             # The provider rejected the batch's size - split it rather than
             # failing the whole ingestion. Costs one extra request per split,
@@ -232,6 +259,9 @@ class OpenRouterEmbedProvider(EmbedProvider):
                 await asyncio.sleep(wait)
                 continue
 
+            if resp.status_code == 400 and "image" in resp.text.lower():
+                raise _UnembeddableInput()
+
             if resp.status_code == 413 or (resp.status_code == 400 and "too" in resp.text.lower()):
                 raise _PayloadTooLarge()
 
@@ -258,6 +288,10 @@ class OpenRouterEmbedProvider(EmbedProvider):
 
 
 class _PayloadTooLarge(Exception):
+    pass
+
+
+class _UnembeddableInput(Exception):
     pass
 
 

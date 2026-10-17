@@ -8,6 +8,7 @@ from app.providers.openrouter_embed_provider import (
     EmbeddingProviderError,
     EmbeddingQuotaExceeded,
     OpenRouterEmbedProvider,
+    sanitize_for_embedding,
 )
 
 NATIVE_DIM = 8
@@ -127,3 +128,30 @@ async def test_error_inside_200_body_is_an_error():
 
     with pytest.raises(EmbeddingProviderError):
         await provider.embed_query("x")
+
+
+def test_image_like_text_is_sanitized():
+    code = 'x = "data:image/gif;base64,R0lGODlhAQABAHAAACH5BAUAAAAALAAAAAABAAEAAAICRAEAOw=="  # see https://example.com/a/b.PNG?v=1'
+    out = sanitize_for_embedding(code)
+    assert "R0lGOD" not in out and "b.PNG" not in out
+    assert "data:<omitted>" in out and "<image-url>" in out
+    assert sanitize_for_embedding("plain code, no media") == "plain code, no media"
+
+
+@pytest.mark.asyncio
+async def test_server_side_image_rejection_is_isolated_not_fatal():
+    # Simulates a server that still flags one input as an image after
+    # sanitizing: the batch must survive, with a placeholder for that chunk.
+    def rejects_poison(body, call):
+        if any("POISON" in t for t in body["input"]):
+            return httpx.Response(400, json={"error": {"message": "image inputs require VLM serving"}})
+        return ok(body, call)
+
+    client, calls = fake_openrouter(rejects_poison)
+    provider = make_provider(client, batch_size=8)
+
+    vectors = await provider.embed_documents(["a", "POISON", "c", "d"])
+
+    assert len(vectors) == 4
+    sent = [t for c in calls for t in c["input"]]
+    assert any("content omitted" in t for t in sent)
