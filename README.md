@@ -26,8 +26,28 @@ Point it at a public GitHub repository. It clones and parses the code, builds a 
 
 ---
 
+## Demo
+
+<div align="center">
+
+![KnowYourRepo demo: ingesting gorilla/mux, then exploring the overview, architecture, symbols, call graph and a cited chat answer](Docs/demo/knowyourrepo-demo.gif)
+
+</div>
+
+Recorded against the Docker Compose stack with real services (no mocks). The run shows:
+
+1. **Ingest.** Paste `https://github.com/gorilla/mux`. The job moves through *cloning, walking, parsing, generating embeddings* and finishes in a few seconds.
+2. **Overview.** A generated summary, repo stats (17 files, 261 symbols, 2,239 call edges) and a reading path with inline code previews.
+3. **Architecture.** 31 detected components (structs and interfaces such as `Router` and `RouteMatch`). Opening one shows the exact source lines.
+4. **Symbols.** The searchable symbol index across functions, structs, interfaces and types.
+5. **Call graph.** The call graph rooted at `ServeHTTP`, in 2D and 3D.
+6. **Chat.** "How does the router match an incoming request to a route?" returns a Markdown answer built from semantic and lexical retrieval, with cited sources. Clicking `Match` opens `route.go:377-379`.
+
+---
+
 ## Table of contents
 
+- [Demo](#demo)
 - [What it does](#what-it-does)
 - [Architecture](#architecture)
 - [How it works](#how-it-works)
