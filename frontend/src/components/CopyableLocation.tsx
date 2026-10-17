@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { displayPath } from "../lib/path";
 
 interface CopyableLocationProps {
   filePath: string;
@@ -13,9 +14,10 @@ interface CopyableLocationProps {
 export default function CopyableLocation({ filePath, startLine, endLine }: CopyableLocationProps) {
   const [copied, setCopied] = useState(false);
 
+  const path = displayPath(filePath);
   const label = startLine
-    ? `${filePath}:${startLine}${endLine && endLine !== startLine ? `-${endLine}` : ""}`
-    : filePath;
+    ? `${path}:${startLine}${endLine && endLine !== startLine ? `-${endLine}` : ""}`
+    : path;
 
   const handleClick = async () => {
     try {
