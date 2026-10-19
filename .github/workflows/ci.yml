@@ -1,0 +1,57 @@
+name:  CI
+
+on:
+  push: 
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{github.ref}}
+  cancel-in-progress: true 
+
+#Least-Privilege
+permissions:
+  contents: read 
+
+jobs:
+  api:
+    name: Go API 
+    runs-on: ubuntu-latest
+    defaults:
+        run:
+          working-directory: api 
+
+    #A temp PG+PgVector next to the Job, 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: knowyourrepo
+        ports:
+          - 5432:5432 
+        options: >-
+            --health-cmd "pg_isready -U postgres -d knowyourrepo"
+            --health-interval 5s 
+            --health-timeout 5s
+            --health-retries 10
+    
+    env:
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/knowyourrepo?sslmode=disable
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: api/go.mod   #Single source of truth for the Go version
+          cache-dependency-path: api/go.sum   #module cache keyed on go.sum 
+          
+      - name: Build 
+        run: go build ./... 
+
+      - name: Vet 
+        run: go vet ./... 
+
+      - name: Test 
+        run: go test ./... -p 1 
