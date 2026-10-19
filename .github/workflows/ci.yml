@@ -44,8 +44,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-        go-version-file: api/go.mod   #Single source of truth for the Go version
-        cache-dependency-path: api/go.sum   #module cache keyed on go.sum 
+          go-version-file: api/go.mod   #Single source of truth for the Go version
+          cache-dependency-path: api/go.sum   #module cache keyed on go.sum 
           
       - name: Build 
         run: go build ./... 
