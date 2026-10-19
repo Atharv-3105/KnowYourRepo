@@ -85,3 +85,4 @@ jobs:
         run: python -c "import app.main; print('app imports ok')"
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/knowyourrepo
+          GROQ_API_KEY: ci-dummy-key
