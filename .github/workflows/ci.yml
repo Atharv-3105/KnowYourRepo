@@ -44,8 +44,8 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: api/go.mod   #Single source of truth for the Go version
-          cache-dependency-path: api/go.sum   #module cache keyed on go.sum 
+        go-version-file: api/go.mod   #Single source of truth for the Go version
+        cache-dependency-path: api/go.sum   #module cache keyed on go.sum 
           
       - name: Build 
         run: go build ./... 
@@ -55,3 +55,33 @@ jobs:
 
       - name: Test 
         run: go test ./... -p 1 
+
+  extraction-service:
+    name: Python Extraction Service
+    runs-on: ubuntu-latest
+    defaults:
+      run: 
+          working-directory: extraction-service
+     
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5 
+        with: 
+          python-version: "3.12"
+          cache: pip 
+          cache-dependency-path: extraction-service/requirements.txt
+        
+      - name: Install dependencies
+        run: pip install -r requirements.txt 
+
+      - name: Lint(ruff)
+        run: ruff check .
+      
+      - name: Unit Tests(pytest)
+        run: pytest -q 
+
+      #A Smoke Test does the whole app wire together at import time
+      - name: Import smoke test 
+        run: python -c "import app.main; print('app imports ok')"
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/knowyourrepo
