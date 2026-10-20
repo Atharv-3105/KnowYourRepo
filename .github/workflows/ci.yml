@@ -17,6 +17,7 @@ jobs:
   api:
     name: Go API 
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
         run:
           working-directory: api 
@@ -59,6 +60,7 @@ jobs:
   extraction-service:
     name: Python Extraction Service
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run: 
           working-directory: extraction-service
@@ -86,3 +88,37 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/knowyourrepo
           GROQ_API_KEY: ci-dummy-key
+  
+  frontend:
+    name: frontend 
+    runs-on: ubuntu-latest 
+    timeout-minutes: 10 
+    defaults:
+        run:
+            working-directory: frontend 
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 
+          cache: npm 
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: Install frontend 
+        run: npm ci 
+      
+      - name: Lint (oxlint)
+        run: npm run lint 
+
+      - name: Type-check and build 
+        run: npm run build 
+
+      - name: Upload the built site
+        uses: actions/upload-artifact@v4
+        with:
+           name: frontend-dist 
+           path: frontend/dist 
+           retention-days: 7
+           if-no-files-found: error 
+
