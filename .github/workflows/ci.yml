@@ -39,7 +39,7 @@ jobs:
            extraction-service:
               - 'extraction-service/**'
               - '.github/workflows/ci.yml'
-            frontend:
+           frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
   api:
